@@ -1,0 +1,674 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - FILES MODULE
+# ============================================================================
+# File I/O and filesystem operations
+# Provides read, write, copy, move, and directory operations
+# ============================================================================
+
+# ============================================================================
+# FILE READING
+# ============================================================================
+
+sigh read_file(path) {
+    # Read entire file as string
+    attempt {
+        remember handle = file_open(path, "r")
+        remember content = file_read(handle)
+        file_close(handle)
+        exhale content
+    } catch error {
+        raise "Failed to read file ${path}: ${error}"
+    }
+}
+
+sigh read_lines(path) {
+    # Read file as list of lines
+    remember content = read_file(path)
+    remember lines = split_string(content, "\n")
+
+    # Remove trailing empty line if present
+    remember count = length_of(lines)
+    if count > 0 {
+        remember last = lines[count - 1]
+        if string_length(last) == 0 {
+            lines = slice_list(lines, 0, count - 1)
+        }
+    }
+
+    exhale lines
+}
+
+sigh read_bytes(path) {
+    # Read file as binary data
+    attempt {
+        remember handle = file_open(path, "rb")
+        remember content = file_read(handle)
+        file_close(handle)
+        exhale content
+    } catch error {
+        raise "Failed to read file ${path}: ${error}"
+    }
+}
+
+sigh read_json(path) {
+    # Read and parse JSON file
+    remember content = read_file(path)
+    attempt {
+        exhale parse_json(content)
+    } catch error {
+        raise "Failed to parse JSON from ${path}: ${error}"
+    }
+}
+
+# ============================================================================
+# FILE WRITING
+# ============================================================================
+
+sigh write_file(path, content) {
+    # Write string to file (overwrite)
+    attempt {
+        remember handle = file_open(path, "w")
+        file_write(handle, content)
+        file_close(handle)
+        exhale yes
+    } catch error {
+        raise "Failed to write file ${path}: ${error}"
+    }
+}
+
+sigh write_lines(path, lines) {
+    # Write list of lines to file
+    remember content = join_strings(lines, "\n")
+    exhale write_file(path, content)
+}
+
+sigh write_bytes(path, data) {
+    # Write binary data to file
+    attempt {
+        remember handle = file_open(path, "wb")
+        file_write(handle, data)
+        file_close(handle)
+        exhale yes
+    } catch error {
+        raise "Failed to write file ${path}: ${error}"
+    }
+}
+
+sigh write_json(path, data) {
+    # Write data as JSON to file
+    remember json_str = to_json(data)
+    exhale write_file(path, json_str)
+}
+
+sigh append_file(path, content) {
+    # Append string to file
+    attempt {
+        remember handle = file_open(path, "a")
+        file_write(handle, content)
+        file_close(handle)
+        exhale yes
+    } catch error {
+        raise "Failed to append to file ${path}: ${error}"
+    }
+}
+
+sigh append_lines(path, lines) {
+    # Append lines to file
+    remember content = join_strings(lines, "\n")
+    exhale append_file(path, "${content}\n")
+}
+
+# ============================================================================
+# FILE OPERATIONS
+# ============================================================================
+
+sigh exists(path) {
+    # Check if file or directory exists
+    attempt {
+        remember info = file_stat(path)
+        exhale yes
+    } catch error {
+        exhale no
+    }
+}
+
+sigh is_file(path) {
+    # Check if path is a file
+    if not exists(path) {
+        exhale no
+    }
+
+    attempt {
+        remember info = file_stat(path)
+        exhale info["type"] == "file"
+    } catch error {
+        exhale no
+    }
+}
+
+sigh is_dir(path) {
+    # Check if path is a directory
+    if not exists(path) {
+        exhale no
+    }
+
+    attempt {
+        remember info = file_stat(path)
+        exhale info["type"] == "directory"
+    } catch error {
+        exhale no
+    }
+}
+
+sigh file_size(path) {
+    # Get file size in bytes
+    attempt {
+        remember info = file_stat(path)
+        exhale info["size"]
+    } catch error {
+        raise "Failed to get size of ${path}: ${error}"
+    }
+}
+
+sigh file_modified(path) {
+    # Get last modification time
+    attempt {
+        remember info = file_stat(path)
+        exhale info["modified"]
+    } catch error {
+        raise "Failed to get modification time of ${path}: ${error}"
+    }
+}
+
+sigh delete(path) {
+    # Delete file
+    attempt {
+        file_remove(path)
+        exhale yes
+    } catch error {
+        raise "Failed to delete ${path}: ${error}"
+    }
+}
+
+sigh rename(old_path, new_path) {
+    # Rename/move file
+    attempt {
+        file_rename(old_path, new_path)
+        exhale yes
+    } catch error {
+        raise "Failed to rename ${old_path} to ${new_path}: ${error}"
+    }
+}
+
+sigh move(source, destination) {
+    # Alias for rename
+    exhale rename(source, destination)
+}
+
+sigh copy(source, destination) {
+    # Copy file
+    attempt {
+        remember content = read_bytes(source)
+        write_bytes(destination, content)
+        exhale yes
+    } catch error {
+        raise "Failed to copy ${source} to ${destination}: ${error}"
+    }
+}
+
+# ============================================================================
+# DIRECTORY OPERATIONS
+# ============================================================================
+
+sigh mkdir(path, recursive) {
+    # Create directory
+    if recursive == void {
+        recursive = no
+    }
+
+    attempt {
+        if recursive {
+            # Create parent directories if needed
+            remember parts = split_path(path)
+            remember current = ""
+
+            for part in parts {
+                if string_length(current) > 0 {
+                    current = "${current}/${part}"
+                } else {
+                    current = part
+                }
+
+                if not exists(current) {
+                    dir_create(current)
+                }
+            }
+        } else {
+            dir_create(path)
+        }
+        exhale yes
+    } catch error {
+        raise "Failed to create directory ${path}: ${error}"
+    }
+}
+
+sigh rmdir(path, recursive) {
+    # Remove directory
+    if recursive == void {
+        recursive = no
+    }
+
+    attempt {
+        if recursive {
+            # Remove all contents first
+            remember items = listdir(path)
+
+            for item in items {
+                remember full_path = join_path(path, item)
+
+                if is_dir(full_path) {
+                    rmdir(full_path, yes)
+                } else {
+                    delete(full_path)
+                }
+            }
+        }
+
+        dir_remove(path)
+        exhale yes
+    } catch error {
+        raise "Failed to remove directory ${path}: ${error}"
+    }
+}
+
+sigh listdir(path, full_paths) {
+    # List directory contents
+    if path == void {
+        path = "."
+    }
+
+    if full_paths == void {
+        full_paths = no
+    }
+
+    attempt {
+        remember items = dir_list(path)
+
+        if full_paths {
+            remember result = []
+            for item in items {
+                remember full_path = join_path(path, item)
+                result = append(result, full_path)
+            }
+            exhale result
+        }
+
+        exhale items
+    } catch error {
+        raise "Failed to list directory ${path}: ${error}"
+    }
+}
+
+sigh walk(path) {
+    # Recursively walk directory tree
+    # Returns list of [dirpath, dirnames, filenames] tuples
+
+    remember result = []
+
+    if not is_dir(path) {
+        exhale result
+    }
+
+    remember to_visit = [path]
+
+    while length_of(to_visit) > 0 {
+        remember current = to_visit[0]
+        to_visit = slice_list(to_visit, 1, void)
+
+        remember items = listdir(current)
+        remember dirs = []
+        remember files = []
+
+        for item in items {
+            remember full_path = join_path(current, item)
+
+            if is_dir(full_path) {
+                dirs = append(dirs, item)
+                to_visit = append(to_visit, full_path)
+            } else {
+                files = append(files, item)
+            }
+        }
+
+        remember entry = [current, dirs, files]
+        result = append(result, entry)
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# PATH OPERATIONS
+# ============================================================================
+
+sigh join_path(parts...) {
+    # Join path components
+    # join_path("home", "user", "file.txt") -> "home/user/file.txt"
+
+    if length_of(parts) == 0 {
+        exhale ""
+    }
+
+    remember result = parts[0]
+    remember i = 1
+
+    while i < length_of(parts) {
+        remember part = parts[i]
+
+        # Remove leading slashes from part
+        while startswith_str(part, "/") {
+            part = substring_str(part, 1, string_length(part))
+        }
+
+        # Add separator if needed
+        if not endswith_str(result, "/") {
+            result = "${result}/"
+        }
+
+        result = "${result}${part}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh split_path(path) {
+    # Split path into components
+    # "/home/user/file.txt" -> ["", "home", "user", "file.txt"]
+
+    remember parts = split_string(path, "/")
+
+    # Filter out empty strings except first one (for absolute paths)
+    remember result = []
+    remember i = 0
+
+    for part in parts {
+        if i == 0 or string_length(part) > 0 {
+            result = append(result, part)
+        }
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh basename(path) {
+    # Get filename from path
+    # "/home/user/file.txt" -> "file.txt"
+
+    remember parts = split_path(path)
+    remember count = length_of(parts)
+
+    if count == 0 {
+        exhale ""
+    }
+
+    exhale parts[count - 1]
+}
+
+sigh dirname(path) {
+    # Get directory from path
+    # "/home/user/file.txt" -> "/home/user"
+
+    remember parts = split_path(path)
+    remember count = length_of(parts)
+
+    if count <= 1 {
+        exhale "."
+    }
+
+    remember dir_parts = slice_list(parts, 0, count - 1)
+    exhale join_strings(dir_parts, "/")
+}
+
+sigh extname(path) {
+    # Get file extension
+    # "file.txt" -> ".txt"
+
+    remember name = basename(path)
+    remember last_dot = last_index_of_str(name, ".")
+
+    if last_dot < 0 {
+        exhale ""
+    }
+
+    exhale substring_str(name, last_dot, string_length(name))
+}
+
+sigh stem(path) {
+    # Get filename without extension
+    # "file.txt" -> "file"
+
+    remember name = basename(path)
+    remember last_dot = last_index_of_str(name, ".")
+
+    if last_dot < 0 {
+        exhale name
+    }
+
+    exhale substring_str(name, 0, last_dot)
+}
+
+sigh abspath(path) {
+    # Get absolute path
+    attempt {
+        exhale path_absolute(path)
+    } catch error {
+        # Fallback: join with current directory
+        remember cwd = get_cwd()
+        exhale join_path(cwd, path)
+    }
+}
+
+sigh normpath(path) {
+    # Normalize path (resolve . and ..)
+    remember parts = split_path(path)
+    remember result = []
+
+    for part in parts {
+        if part == "." {
+            # Skip current directory references
+        } else {
+            if part == ".." {
+                # Go up one directory
+                remember count = length_of(result)
+                if count > 0 {
+                    result = slice_list(result, 0, count - 1)
+                }
+            } else {
+                result = append(result, part)
+            }
+        }
+    }
+
+    if length_of(result) == 0 {
+        exhale "."
+    }
+
+    exhale join_strings(result, "/")
+}
+
+# ============================================================================
+# GLOB PATTERN MATCHING
+# ============================================================================
+
+sigh glob(pattern, recursive) {
+    # Find files matching glob pattern
+    # glob("*.txt") -> list of .txt files in current directory
+    # glob("**/*.txt", yes) -> recursive search
+
+    if recursive == void {
+        recursive = no
+    }
+
+    remember result = []
+
+    # Get directory and pattern
+    remember dir_path = dirname(pattern)
+    remember file_pattern = basename(pattern)
+
+    if dir_path == "." {
+        dir_path = get_cwd()
+    }
+
+    # Walk directory tree
+    if recursive {
+        remember walked = walk(dir_path)
+
+        for entry in walked {
+            remember dirpath = entry[0]
+            remember files = entry[2]
+
+            for filename in files {
+                if matches_pattern(filename, file_pattern) {
+                    remember full_path = join_path(dirpath, filename)
+                    result = append(result, full_path)
+                }
+            }
+        }
+    } else {
+        # Just list current directory
+        remember files = listdir(dir_path)
+
+        for filename in files {
+            remember full_path = join_path(dir_path, filename)
+
+            if is_file(full_path) and matches_pattern(filename, file_pattern) {
+                result = append(result, full_path)
+            }
+        }
+    }
+
+    exhale result
+}
+
+sigh matches_pattern(text, pattern) {
+    # Simple glob pattern matching (* and ? wildcards)
+    # TODO: Implement proper glob matching
+
+    # For now, simple implementation
+    if pattern == "*" {
+        exhale yes
+    }
+
+    if index_of_str(pattern, "*") < 0 and index_of_str(pattern, "?") < 0 {
+        # No wildcards, exact match
+        exhale text == pattern
+    }
+
+    # Simple suffix/prefix matching
+    if startswith_str(pattern, "*") and not contains_str(substring_str(pattern, 1, string_length(pattern)), "*") {
+        remember suffix = substring_str(pattern, 1, string_length(pattern))
+        exhale endswith_str(text, suffix)
+    }
+
+    if endswith_str(pattern, "*") and not contains_str(substring_str(pattern, 0, string_length(pattern) - 1), "*") {
+        remember prefix = substring_str(pattern, 0, string_length(pattern) - 1)
+        exhale startswith_str(text, prefix)
+    }
+
+    # Default: no match
+    exhale no
+}
+
+# ============================================================================
+# TEMPORARY FILES
+# ============================================================================
+
+sigh temp_file(prefix, suffix) {
+    # Create temporary file and return path
+    if prefix == void {
+        prefix = "lament_"
+    }
+
+    if suffix == void {
+        suffix = ".tmp"
+    }
+
+    remember timestamp = get_timestamp()
+    remember random_part = to_string(timestamp * 1000 % 100000)
+    remember temp_name = "${prefix}${random_part}${suffix}"
+
+    remember temp_dir = get_temp_dir()
+    remember temp_path = join_path(temp_dir, temp_name)
+
+    # Create empty file
+    write_file(temp_path, "")
+
+    exhale temp_path
+}
+
+# ============================================================================
+# HELPER FUNCTIONS (String operations needed for file module)
+# ============================================================================
+
+sigh split_string(text, delimiter) {
+    import { split } from "strings.lament"
+    exhale split(text, delimiter)
+}
+
+sigh join_strings(list, separator) {
+    import { join } from "strings.lament"
+    exhale join(list, separator)
+}
+
+sigh startswith_str(text, prefix) {
+    import { startswith } from "strings.lament"
+    exhale startswith(text, prefix)
+}
+
+sigh endswith_str(text, suffix) {
+    import { endswith } from "strings.lament"
+    exhale endswith(text, suffix)
+}
+
+sigh contains_str(text, substring) {
+    import { contains } from "strings.lament"
+    exhale contains(text, substring)
+}
+
+sigh index_of_str(text, substring) {
+    import { index_of } from "strings.lament"
+    exhale index_of(text, substring)
+}
+
+sigh last_index_of_str(text, substring) {
+    import { last_index_of } from "strings.lament"
+    exhale last_index_of(text, substring)
+}
+
+sigh substring_str(text, start, end) {
+    exhale substring(text, start, end)
+}
+
+sigh slice_list(list, start, end) {
+    import { slice } from "core.lament"
+    exhale slice(list, start, end)
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    read_file, read_lines, read_bytes, read_json,
+    write_file, write_lines, write_bytes, write_json,
+    append_file, append_lines,
+    exists, is_file, is_dir, file_size, file_modified,
+    delete, rename, move, copy,
+    mkdir, rmdir, listdir, walk,
+    join_path, split_path, basename, dirname, extname, stem,
+    abspath, normpath,
+    glob, matches_pattern,
+    temp_file
+}

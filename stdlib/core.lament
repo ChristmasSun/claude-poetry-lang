@@ -1,0 +1,507 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - CORE MODULE
+# ============================================================================
+# Core utilities and fundamental operations
+# Provides essential functions for everyday programming tasks
+# ============================================================================
+
+# ============================================================================
+# I/O FUNCTIONS
+# ============================================================================
+
+sigh print(value) {
+    # Print a value to standard output
+    confess value
+    exhale void
+}
+
+sigh input(prompt) {
+    # Read input from standard input (wrapper around listen)
+    if prompt != void {
+        confess prompt
+    }
+    exhale listen()
+}
+
+# ============================================================================
+# RANGE AND SEQUENCE FUNCTIONS
+# ============================================================================
+
+sigh range(start, stop, step) {
+    # Generate a range of numbers
+    # range(5) -> [0, 1, 2, 3, 4]
+    # range(2, 5) -> [2, 3, 4]
+    # range(0, 10, 2) -> [0, 2, 4, 6, 8]
+
+    remember result = []
+
+    # Handle single argument case
+    if stop == void {
+        stop = start
+        start = 0
+    }
+
+    # Handle default step
+    if step == void {
+        step = 1
+    }
+
+    # Generate sequence
+    if step > 0 {
+        remember i = start
+        while i < stop {
+            result = append(result, i)
+            i = i + step
+        }
+    } else {
+        remember i = start
+        while i > stop {
+            result = append(result, i)
+            i = i + step
+        }
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# HIGHER-ORDER FUNCTIONS
+# ============================================================================
+
+sigh map(fn, iterable) {
+    # Apply function to every item in iterable
+    # map(square, [1, 2, 3]) -> [1, 4, 9]
+
+    remember result = []
+    for item in iterable {
+        remember transformed = fn(item)
+        result = append(result, transformed)
+    }
+    exhale result
+}
+
+sigh filter(fn, iterable) {
+    # Filter items based on predicate function
+    # filter(is_even, [1, 2, 3, 4]) -> [2, 4]
+
+    remember result = []
+    for item in iterable {
+        if fn(item) {
+            result = append(result, item)
+        }
+    }
+    exhale result
+}
+
+sigh reduce(fn, iterable, initial) {
+    # Reduce iterable to single value using binary function
+    # reduce(add, [1, 2, 3, 4], 0) -> 10
+
+    remember accumulator = initial
+    if accumulator == void {
+        if length_of(iterable) == 0 {
+            raise "reduce() of empty sequence with no initial value"
+        }
+        accumulator = iterable[0]
+        iterable = slice(iterable, 1, void)
+    }
+
+    for item in iterable {
+        accumulator = fn(accumulator, item)
+    }
+
+    exhale accumulator
+}
+
+sigh foreach(fn, iterable) {
+    # Execute function for each item (for side effects)
+    for item in iterable {
+        fn(item)
+    }
+    exhale void
+}
+
+# ============================================================================
+# TYPE CONVERSION FUNCTIONS
+# ============================================================================
+
+sigh str(value) {
+    # Convert value to string (whisper)
+    if is_whisper(value) {
+        exhale value
+    }
+
+    if is_numb(value) {
+        exhale to_string(value)
+    }
+
+    if is_void(value) {
+        exhale "void"
+    }
+
+    if typeof(value) == "maybe" {
+        if value is yes {
+            exhale "yes"
+        } else {
+            if value is no {
+                exhale "no"
+            } else {
+                exhale "perhaps"
+            }
+        }
+    }
+
+    # For lists and dicts, create string representation
+    if typeof(value) == "list" {
+        remember parts = []
+        for item in value {
+            parts = append(parts, str(item))
+        }
+        exhale "[${join(parts, ", ")}]"
+    }
+
+    exhale to_string(value)
+}
+
+sigh int(value) {
+    # Convert value to integer (numb)
+    if is_numb(value) {
+        exhale value
+    }
+
+    if is_whisper(value) {
+        exhale parse_int(value)
+    }
+
+    if is_ache(value) {
+        exhale floor(value)
+    }
+
+    raise "Cannot convert ${typeof(value)} to int"
+}
+
+sigh float(value) {
+    # Convert value to float (ache)
+    if is_ache(value) {
+        exhale value
+    }
+
+    if is_numb(value) {
+        exhale to_float(value)
+    }
+
+    if is_whisper(value) {
+        exhale parse_float(value)
+    }
+
+    raise "Cannot convert ${typeof(value)} to float"
+}
+
+sigh bool(value) {
+    # Convert value to boolean (maybe)
+    if value == void {
+        exhale no
+    }
+
+    if is_numb(value) {
+        if value == 0 {
+            exhale no
+        }
+        exhale yes
+    }
+
+    if is_whisper(value) {
+        if value == "" {
+            exhale no
+        }
+        exhale yes
+    }
+
+    if typeof(value) == "list" {
+        if length_of(value) == 0 {
+            exhale no
+        }
+        exhale yes
+    }
+
+    exhale yes
+}
+
+# ============================================================================
+# COLLECTION FUNCTIONS
+# ============================================================================
+
+sigh len(collection) {
+    # Get length of collection
+    exhale length_of(collection)
+}
+
+sigh append(list, item) {
+    # Append item to list
+    remember new_list = []
+    for existing in list {
+        new_list = push(new_list, existing)
+    }
+    new_list = push(new_list, item)
+    exhale new_list
+}
+
+sigh extend(list1, list2) {
+    # Extend list1 with items from list2
+    remember result = list1
+    for item in list2 {
+        result = append(result, item)
+    }
+    exhale result
+}
+
+sigh slice(list, start, end) {
+    # Extract slice from list
+    # slice([1,2,3,4,5], 1, 3) -> [2, 3]
+
+    remember size = length_of(list)
+
+    if start == void {
+        start = 0
+    }
+    if end == void {
+        end = size
+    }
+
+    # Handle negative indices
+    if start < 0 {
+        start = size + start
+    }
+    if end < 0 {
+        end = size + end
+    }
+
+    remember result = []
+    remember i = start
+    while i < end and i < size {
+        result = append(result, list[i])
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh reverse(list) {
+    # Reverse a list
+    remember result = []
+    remember i = length_of(list) - 1
+    while i >= 0 {
+        result = append(result, list[i])
+        i = i - 1
+    }
+    exhale result
+}
+
+sigh sort(list, key_fn, reverse_order) {
+    # Sort a list (bubble sort implementation)
+    remember result = []
+    for item in list {
+        result = append(result, item)
+    }
+
+    remember n = length_of(result)
+    remember i = 0
+
+    while i < n {
+        remember j = 0
+        while j < n - i - 1 {
+            remember a = result[j]
+            remember b = result[j + 1]
+
+            # Apply key function if provided
+            if key_fn != void {
+                a = key_fn(a)
+                b = key_fn(b)
+            }
+
+            # Compare
+            remember should_swap = a > b
+            if reverse_order is yes {
+                should_swap = a < b
+            }
+
+            if should_swap {
+                remember temp = result[j]
+                result[j] = result[j + 1]
+                result[j + 1] = temp
+            }
+
+            j = j + 1
+        }
+        i = i + 1
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# ENUMERATION AND ZIPPING
+# ============================================================================
+
+sigh enumerate(iterable, start) {
+    # Return list of (index, value) pairs
+    # enumerate(['a', 'b', 'c']) -> [[0, 'a'], [1, 'b'], [2, 'c']]
+
+    if start == void {
+        start = 0
+    }
+
+    remember result = []
+    remember index = start
+
+    for item in iterable {
+        remember pair = [index, item]
+        result = append(result, pair)
+        index = index + 1
+    }
+
+    exhale result
+}
+
+sigh zip(list1, list2) {
+    # Zip two lists together
+    # zip([1, 2, 3], ['a', 'b', 'c']) -> [[1, 'a'], [2, 'b'], [3, 'c']]
+
+    remember result = []
+    remember len1 = length_of(list1)
+    remember len2 = length_of(list2)
+    remember min_len = len1
+
+    if len2 < min_len {
+        min_len = len2
+    }
+
+    remember i = 0
+    while i < min_len {
+        remember pair = [list1[i], list2[i]]
+        result = append(result, pair)
+        i = i + 1
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# PREDICATE FUNCTIONS
+# ============================================================================
+
+sigh all(iterable) {
+    # Return yes if all elements are truthy
+    for item in iterable {
+        if not bool(item) {
+            exhale no
+        }
+    }
+    exhale yes
+}
+
+sigh any(iterable) {
+    # Return yes if any element is truthy
+    for item in iterable {
+        if bool(item) {
+            exhale yes
+        }
+    }
+    exhale no
+}
+
+# ============================================================================
+# TYPE CHECKING FUNCTIONS
+# ============================================================================
+
+sigh type(value) {
+    # Get type name of value
+    exhale typeof(value)
+}
+
+sigh isinstance(value, type_name) {
+    # Check if value is of given type
+    exhale typeof(value) == type_name
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh identity(x) {
+    # Return the same value
+    exhale x
+}
+
+sigh const(value) {
+    # Create constant function
+    sigh constant_fn(ignored) {
+        exhale value
+    }
+    exhale constant_fn
+}
+
+sigh compose(f, g) {
+    # Compose two functions: compose(f, g)(x) == f(g(x))
+    sigh composed(x) {
+        exhale f(g(x))
+    }
+    exhale composed
+}
+
+sigh partial(fn, bound_arg) {
+    # Partially apply a function
+    sigh partially_applied(x) {
+        exhale fn(bound_arg, x)
+    }
+    exhale partially_applied
+}
+
+# ============================================================================
+# HELPER FUNCTIONS FOR STRING OPERATIONS
+# ============================================================================
+
+sigh join(list, separator) {
+    # Join list of strings with separator
+    if length_of(list) == 0 {
+        exhale ""
+    }
+
+    remember result = str(list[0])
+    remember i = 1
+    remember size = length_of(list)
+
+    while i < size {
+        result = "${result}${separator}${str(list[i])}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh repeat(value, times) {
+    # Repeat a value n times
+    remember result = []
+    remember i = 0
+    while i < times {
+        result = append(result, value)
+        i = i + 1
+    }
+    exhale result
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    print, input,
+    range, map, filter, reduce, foreach,
+    str, int, float, bool,
+    len, append, extend, slice, reverse, sort,
+    enumerate, zip,
+    all, any,
+    type, isinstance,
+    identity, const, compose, partial,
+    join, repeat
+}

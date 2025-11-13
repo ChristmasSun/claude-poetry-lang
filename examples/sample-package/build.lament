@@ -1,0 +1,29 @@
+{
+  "name": "emotion-tracker",
+  "target": "executable",
+  "entry_point": "src/main.lament",
+  "output_dir": "build/out",
+  "source_dirs": [
+    "src",
+    "lib"
+  ],
+  "include_patterns": [
+    "**/*.lament"
+  ],
+  "exclude_patterns": [
+    "tests/**",
+    "**/test_*.lament",
+    "examples/**"
+  ],
+  "dependencies": [
+    "emotion-core",
+    "temporal-utils"
+  ],
+  "optimization_level": 2,
+  "debug": false,
+  "warnings_as_errors": true,
+  "custom_flags": [
+    "--enable-temporal-optimization",
+    "--emotion-analysis-level=detailed"
+  ]
+}

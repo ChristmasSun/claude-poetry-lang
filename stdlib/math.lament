@@ -1,0 +1,673 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - MATH MODULE
+# ============================================================================
+# Mathematical functions and constants
+# Provides trigonometry, algebra, statistics, and more
+# ============================================================================
+
+# ============================================================================
+# MATHEMATICAL CONSTANTS
+# ============================================================================
+
+remember PI = 3.141592653589793
+remember E = 2.718281828459045
+remember TAU = 6.283185307179586
+remember PHI = 1.618033988749895  # Golden ratio
+remember SQRT2 = 1.414213562373095
+remember LN2 = 0.6931471805599453
+remember LN10 = 2.302585092994046
+
+# ============================================================================
+# BASIC ARITHMETIC
+# ============================================================================
+
+sigh abs(x) {
+    # Absolute value
+    if x < 0 {
+        exhale -x
+    }
+    exhale x
+}
+
+sigh sign(x) {
+    # Sign of number (-1, 0, or 1)
+    if x < 0 {
+        exhale -1
+    }
+    if x > 0 {
+        exhale 1
+    }
+    exhale 0
+}
+
+sigh max(a, b) {
+    # Maximum of two numbers
+    if a > b {
+        exhale a
+    }
+    exhale b
+}
+
+sigh min(a, b) {
+    # Minimum of two numbers
+    if a < b {
+        exhale a
+    }
+    exhale b
+}
+
+sigh clamp(x, min_val, max_val) {
+    # Clamp x between min_val and max_val
+    if x < min_val {
+        exhale min_val
+    }
+    if x > max_val {
+        exhale max_val
+    }
+    exhale x
+}
+
+# ============================================================================
+# POWER AND ROOT FUNCTIONS
+# ============================================================================
+
+sigh pow(base, exponent) {
+    # Power function: base^exponent
+    if exponent == 0 {
+        exhale 1
+    }
+
+    if exponent < 0 {
+        exhale 1 / pow(base, -exponent)
+    }
+
+    remember result = 1
+    remember i = 0
+    while i < exponent {
+        result = result * base
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh sqrt(x) {
+    # Square root using Newton's method
+    if x < 0 {
+        raise "Cannot take square root of negative number"
+    }
+
+    if x == 0 {
+        exhale 0
+    }
+
+    remember guess = x / 2
+    remember epsilon = 0.0000001
+    remember iterations = 0
+    remember max_iterations = 100
+
+    while iterations < max_iterations {
+        remember new_guess = (guess + x / guess) / 2
+        remember diff = abs(new_guess - guess)
+
+        if diff < epsilon {
+            exhale new_guess
+        }
+
+        guess = new_guess
+        iterations = iterations + 1
+    }
+
+    exhale guess
+}
+
+sigh cbrt(x) {
+    # Cube root
+    remember sign_val = 1
+    if x < 0 {
+        sign_val = -1
+        x = -x
+    }
+
+    remember guess = x / 3
+    remember epsilon = 0.0000001
+    remember iterations = 0
+
+    while iterations < 50 {
+        remember new_guess = (2 * guess + x / (guess * guess)) / 3
+        remember diff = abs(new_guess - guess)
+
+        if diff < epsilon {
+            exhale sign_val * new_guess
+        }
+
+        guess = new_guess
+        iterations = iterations + 1
+    }
+
+    exhale sign_val * guess
+}
+
+# ============================================================================
+# ROUNDING FUNCTIONS
+# ============================================================================
+
+sigh floor(x) {
+    # Round down to nearest integer
+    remember int_part = to_int(x)
+    if x >= 0 or x == int_part {
+        exhale int_part
+    }
+    exhale int_part - 1
+}
+
+sigh ceil(x) {
+    # Round up to nearest integer
+    remember int_part = to_int(x)
+    if x <= 0 or x == int_part {
+        exhale int_part
+    }
+    exhale int_part + 1
+}
+
+sigh round(x, digits) {
+    # Round to nearest integer or specified decimal places
+    if digits == void {
+        digits = 0
+    }
+
+    remember multiplier = pow(10, digits)
+    remember shifted = x * multiplier
+
+    remember int_part = to_int(shifted)
+    remember frac_part = shifted - int_part
+
+    if frac_part >= 0.5 {
+        int_part = int_part + 1
+    } else {
+        if frac_part <= -0.5 {
+            int_part = int_part - 1
+        }
+    }
+
+    exhale int_part / multiplier
+}
+
+sigh trunc(x) {
+    # Truncate to integer
+    exhale to_int(x)
+}
+
+# ============================================================================
+# TRIGONOMETRIC FUNCTIONS
+# ============================================================================
+
+sigh sin(x) {
+    # Sine using Taylor series
+    # sin(x) = x - x^3/3! + x^5/5! - x^7/7! + ...
+
+    # Normalize x to [-π, π]
+    while x > PI {
+        x = x - TAU
+    }
+    while x < -PI {
+        x = x + TAU
+    }
+
+    remember result = 0
+    remember term = x
+    remember i = 1
+
+    while i < 20 {
+        result = result + term
+
+        remember numerator = term * (-1) * x * x
+        remember denominator = (2 * i) * (2 * i + 1)
+        term = numerator / denominator
+
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh cos(x) {
+    # Cosine using Taylor series
+    # cos(x) = 1 - x^2/2! + x^4/4! - x^6/6! + ...
+
+    # Normalize x to [-π, π]
+    while x > PI {
+        x = x - TAU
+    }
+    while x < -PI {
+        x = x + TAU
+    }
+
+    remember result = 0
+    remember term = 1
+    remember i = 1
+
+    while i < 20 {
+        result = result + term
+
+        remember numerator = term * (-1) * x * x
+        remember denominator = (2 * i - 1) * (2 * i)
+        term = numerator / denominator
+
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh tan(x) {
+    # Tangent = sin(x) / cos(x)
+    remember cos_val = cos(x)
+    if abs(cos_val) < 0.0000001 {
+        raise "Tangent undefined at this point"
+    }
+    exhale sin(x) / cos_val
+}
+
+sigh asin(x) {
+    # Arcsine using approximation
+    if x < -1 or x > 1 {
+        raise "asin domain error: x must be in [-1, 1]"
+    }
+
+    if abs(x) == 1 {
+        exhale x * PI / 2
+    }
+
+    # Using Taylor series approximation
+    remember result = x
+    remember term = x
+    remember i = 1
+
+    while i < 15 {
+        remember factor = (2 * i - 1) * (2 * i - 1)
+        term = term * x * x * factor / ((2 * i) * (2 * i + 1))
+        result = result + term
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh acos(x) {
+    # Arccos = π/2 - asin(x)
+    exhale PI / 2 - asin(x)
+}
+
+sigh atan(x) {
+    # Arctangent using approximation
+    if abs(x) > 1 {
+        remember result = PI / 2 - atan(1 / x)
+        if x < 0 {
+            result = -PI / 2 - atan(1 / x)
+        }
+        exhale result
+    }
+
+    # Taylor series for small x
+    remember result = 0
+    remember term = x
+    remember i = 0
+
+    while i < 30 {
+        remember sign_val = 1
+        if i % 2 == 1 {
+            sign_val = -1
+        }
+
+        result = result + sign_val * term / (2 * i + 1)
+        term = term * x * x
+
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh atan2(y, x) {
+    # Two-argument arctangent
+    if x > 0 {
+        exhale atan(y / x)
+    }
+
+    if x < 0 and y >= 0 {
+        exhale atan(y / x) + PI
+    }
+
+    if x < 0 and y < 0 {
+        exhale atan(y / x) - PI
+    }
+
+    if x == 0 and y > 0 {
+        exhale PI / 2
+    }
+
+    if x == 0 and y < 0 {
+        exhale -PI / 2
+    }
+
+    exhale 0  # x == 0 and y == 0
+}
+
+# ============================================================================
+# HYPERBOLIC FUNCTIONS
+# ============================================================================
+
+sigh sinh(x) {
+    # Hyperbolic sine = (e^x - e^-x) / 2
+    remember exp_x = exp(x)
+    remember exp_neg_x = exp(-x)
+    exhale (exp_x - exp_neg_x) / 2
+}
+
+sigh cosh(x) {
+    # Hyperbolic cosine = (e^x + e^-x) / 2
+    remember exp_x = exp(x)
+    remember exp_neg_x = exp(-x)
+    exhale (exp_x + exp_neg_x) / 2
+}
+
+sigh tanh(x) {
+    # Hyperbolic tangent = sinh(x) / cosh(x)
+    exhale sinh(x) / cosh(x)
+}
+
+# ============================================================================
+# EXPONENTIAL AND LOGARITHMIC FUNCTIONS
+# ============================================================================
+
+sigh exp(x) {
+    # e^x using Taylor series
+    # e^x = 1 + x + x^2/2! + x^3/3! + ...
+
+    remember result = 1
+    remember term = 1
+    remember i = 1
+
+    while i < 50 {
+        term = term * x / i
+        result = result + term
+
+        if abs(term) < 0.0000001 {
+            exhale result
+        }
+
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh ln(x) {
+    # Natural logarithm using series expansion
+    if x <= 0 {
+        raise "ln domain error: x must be positive"
+    }
+
+    if x == 1 {
+        exhale 0
+    }
+
+    # Use ln(x) = 2 * (y + y^3/3 + y^5/5 + ...) where y = (x-1)/(x+1)
+    remember y = (x - 1) / (x + 1)
+    remember y_squared = y * y
+    remember result = 0
+    remember term = y
+    remember i = 1
+
+    while i < 100 {
+        result = result + term / i
+        term = term * y_squared
+        i = i + 2
+
+        if abs(term) < 0.0000001 {
+            exhale 2 * result
+        }
+    }
+
+    exhale 2 * result
+}
+
+sigh log(x, base) {
+    # Logarithm with arbitrary base
+    if base == void {
+        base = 10
+    }
+    exhale ln(x) / ln(base)
+}
+
+sigh log10(x) {
+    # Base-10 logarithm
+    exhale ln(x) / LN10
+}
+
+sigh log2(x) {
+    # Base-2 logarithm
+    exhale ln(x) / LN2
+}
+
+# ============================================================================
+# STATISTICS FUNCTIONS
+# ============================================================================
+
+sigh sum(numbers) {
+    # Sum of all numbers in list
+    remember total = 0
+    for num in numbers {
+        total = total + num
+    }
+    exhale total
+}
+
+sigh product(numbers) {
+    # Product of all numbers in list
+    remember result = 1
+    for num in numbers {
+        result = result * num
+    }
+    exhale result
+}
+
+sigh mean(numbers) {
+    # Average/mean
+    remember count = length_of(numbers)
+    if count == 0 {
+        raise "Cannot calculate mean of empty list"
+    }
+    exhale sum(numbers) / count
+}
+
+sigh avg(numbers) {
+    # Alias for mean
+    exhale mean(numbers)
+}
+
+sigh median(numbers) {
+    # Median value
+    remember count = length_of(numbers)
+    if count == 0 {
+        raise "Cannot calculate median of empty list"
+    }
+
+    # Sort the numbers (simple bubble sort)
+    remember sorted = []
+    for num in numbers {
+        sorted = append(sorted, num)
+    }
+
+    remember i = 0
+    while i < count {
+        remember j = 0
+        while j < count - i - 1 {
+            if sorted[j] > sorted[j + 1] {
+                remember temp = sorted[j]
+                sorted[j] = sorted[j + 1]
+                sorted[j + 1] = temp
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+
+    # Return middle value(s)
+    if count % 2 == 1 {
+        exhale sorted[count / 2]
+    }
+
+    remember mid1 = sorted[count / 2 - 1]
+    remember mid2 = sorted[count / 2]
+    exhale (mid1 + mid2) / 2
+}
+
+sigh variance(numbers) {
+    # Population variance
+    remember count = length_of(numbers)
+    if count == 0 {
+        raise "Cannot calculate variance of empty list"
+    }
+
+    remember mean_val = mean(numbers)
+    remember sum_squared_diffs = 0
+
+    for num in numbers {
+        remember diff = num - mean_val
+        sum_squared_diffs = sum_squared_diffs + diff * diff
+    }
+
+    exhale sum_squared_diffs / count
+}
+
+sigh stdev(numbers) {
+    # Standard deviation
+    exhale sqrt(variance(numbers))
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh gcd(a, b) {
+    # Greatest common divisor using Euclidean algorithm
+    a = abs(a)
+    b = abs(b)
+
+    while b != 0 {
+        remember temp = b
+        b = a % b
+        a = temp
+    }
+
+    exhale a
+}
+
+sigh lcm(a, b) {
+    # Least common multiple
+    if a == 0 or b == 0 {
+        exhale 0
+    }
+    exhale abs(a * b) / gcd(a, b)
+}
+
+sigh factorial(n) {
+    # Factorial: n!
+    if n < 0 {
+        raise "Factorial not defined for negative numbers"
+    }
+
+    if n == 0 or n == 1 {
+        exhale 1
+    }
+
+    remember result = 1
+    remember i = 2
+
+    while i <= n {
+        result = result * i
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh is_prime(n) {
+    # Check if number is prime
+    if n < 2 {
+        exhale no
+    }
+
+    if n == 2 {
+        exhale yes
+    }
+
+    if n % 2 == 0 {
+        exhale no
+    }
+
+    remember i = 3
+    remember limit = sqrt(n)
+
+    while i <= limit {
+        if n % i == 0 {
+            exhale no
+        }
+        i = i + 2
+    }
+
+    exhale yes
+}
+
+sigh fibonacci(n) {
+    # Calculate nth Fibonacci number
+    if n <= 0 {
+        exhale 0
+    }
+
+    if n == 1 {
+        exhale 1
+    }
+
+    remember a = 0
+    remember b = 1
+    remember i = 2
+
+    while i <= n {
+        remember temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+
+    exhale b
+}
+
+sigh degrees(radians) {
+    # Convert radians to degrees
+    exhale radians * 180 / PI
+}
+
+sigh radians(degrees) {
+    # Convert degrees to radians
+    exhale degrees * PI / 180
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    PI, E, TAU, PHI, SQRT2, LN2, LN10,
+    abs, sign, max, min, clamp,
+    pow, sqrt, cbrt,
+    floor, ceil, round, trunc,
+    sin, cos, tan, asin, acos, atan, atan2,
+    sinh, cosh, tanh,
+    exp, ln, log, log10, log2,
+    sum, product, mean, avg, median, variance, stdev,
+    gcd, lcm, factorial, is_prime, fibonacci,
+    degrees, radians
+}

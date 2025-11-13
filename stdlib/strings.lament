@@ -1,0 +1,693 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - STRINGS MODULE
+# ============================================================================
+# String manipulation and text processing utilities
+# Provides join, split, format, regex, and more
+# ============================================================================
+
+# ============================================================================
+# BASIC STRING OPERATIONS
+# ============================================================================
+
+sigh join(strings, separator) {
+    # Join list of strings with separator
+    if separator == void {
+        separator = ""
+    }
+
+    remember count = length_of(strings)
+    if count == 0 {
+        exhale ""
+    }
+
+    remember result = to_string(strings[0])
+    remember i = 1
+
+    while i < count {
+        result = "${result}${separator}${to_string(strings[i])}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh split(text, delimiter, max_splits) {
+    # Split string by delimiter
+    if delimiter == void {
+        delimiter = " "
+    }
+
+    remember result = []
+    remember current = ""
+    remember i = 0
+    remember text_len = string_length(text)
+    remember delim_len = string_length(delimiter)
+    remember splits = 0
+
+    while i < text_len {
+        # Check if we've reached max splits
+        if max_splits != void and splits >= max_splits {
+            # Add rest of string
+            remember rest = substring(text, i, text_len)
+            result = append(result, rest)
+            exhale result
+        }
+
+        # Check if delimiter matches at current position
+        remember matches = yes
+        remember j = 0
+
+        while j < delim_len and i + j < text_len {
+            if char_at(text, i + j) != char_at(delimiter, j) {
+                matches = no
+            }
+            j = j + 1
+        }
+
+        if matches and delim_len > 0 {
+            # Found delimiter
+            result = append(result, current)
+            current = ""
+            i = i + delim_len
+            splits = splits + 1
+        } else {
+            # Add character to current token
+            current = "${current}${char_at(text, i)}"
+            i = i + 1
+        }
+    }
+
+    # Add final token
+    result = append(result, current)
+    exhale result
+}
+
+sigh strip(text, chars) {
+    # Remove leading and trailing characters
+    if chars == void {
+        chars = " \t\n\r"
+    }
+
+    exhale rstrip(lstrip(text, chars), chars)
+}
+
+sigh lstrip(text, chars) {
+    # Remove leading characters
+    if chars == void {
+        chars = " \t\n\r"
+    }
+
+    remember text_len = string_length(text)
+    remember i = 0
+
+    while i < text_len {
+        remember ch = char_at(text, i)
+        if not contains_char(chars, ch) {
+            exhale substring(text, i, text_len)
+        }
+        i = i + 1
+    }
+
+    exhale ""
+}
+
+sigh rstrip(text, chars) {
+    # Remove trailing characters
+    if chars == void {
+        chars = " \t\n\r"
+    }
+
+    remember text_len = string_length(text)
+    remember i = text_len - 1
+
+    while i >= 0 {
+        remember ch = char_at(text, i)
+        if not contains_char(chars, ch) {
+            exhale substring(text, 0, i + 1)
+        }
+        i = i - 1
+    }
+
+    exhale ""
+}
+
+# ============================================================================
+# SEARCH AND REPLACE
+# ============================================================================
+
+sigh replace(text, old, new, count) {
+    # Replace occurrences of old with new
+    if count == void {
+        count = -1  # Replace all
+    }
+
+    remember result = ""
+    remember i = 0
+    remember text_len = string_length(text)
+    remember old_len = string_length(old)
+    remember replacements = 0
+
+    while i < text_len {
+        # Check if we should stop replacing
+        if count >= 0 and replacements >= count {
+            result = "${result}${substring(text, i, text_len)}"
+            exhale result
+        }
+
+        # Check if old string matches at current position
+        remember matches = yes
+        remember j = 0
+
+        while j < old_len and i + j < text_len {
+            if char_at(text, i + j) != char_at(old, j) {
+                matches = no
+            }
+            j = j + 1
+        }
+
+        if matches and old_len > 0 {
+            # Found match, replace it
+            result = "${result}${new}"
+            i = i + old_len
+            replacements = replacements + 1
+        } else {
+            # No match, copy character
+            result = "${result}${char_at(text, i)}"
+            i = i + 1
+        }
+    }
+
+    exhale result
+}
+
+sigh contains(text, substring) {
+    # Check if text contains substring
+    exhale index_of(text, substring) >= 0
+}
+
+sigh index_of(text, substring, start) {
+    # Find index of first occurrence of substring
+    if start == void {
+        start = 0
+    }
+
+    remember text_len = string_length(text)
+    remember sub_len = string_length(substring)
+
+    if sub_len == 0 {
+        exhale start
+    }
+
+    remember i = start
+
+    while i <= text_len - sub_len {
+        remember matches = yes
+        remember j = 0
+
+        while j < sub_len {
+            if char_at(text, i + j) != char_at(substring, j) {
+                matches = no
+            }
+            j = j + 1
+        }
+
+        if matches {
+            exhale i
+        }
+
+        i = i + 1
+    }
+
+    exhale -1
+}
+
+sigh last_index_of(text, substring) {
+    # Find index of last occurrence of substring
+    remember text_len = string_length(text)
+    remember sub_len = string_length(substring)
+
+    if sub_len == 0 {
+        exhale text_len
+    }
+
+    remember i = text_len - sub_len
+
+    while i >= 0 {
+        remember matches = yes
+        remember j = 0
+
+        while j < sub_len {
+            if char_at(text, i + j) != char_at(substring, j) {
+                matches = no
+            }
+            j = j + 1
+        }
+
+        if matches {
+            exhale i
+        }
+
+        i = i - 1
+    }
+
+    exhale -1
+}
+
+sigh count_occurrences(text, substring) {
+    # Count how many times substring appears in text
+    remember count = 0
+    remember pos = 0
+
+    while pos >= 0 {
+        pos = index_of(text, substring, pos)
+        if pos >= 0 {
+            count = count + 1
+            pos = pos + 1
+        }
+    }
+
+    exhale count
+}
+
+# ============================================================================
+# CASE OPERATIONS
+# ============================================================================
+
+sigh upper(text) {
+    # Convert to uppercase
+    remember result = ""
+    remember i = 0
+    remember text_len = string_length(text)
+
+    while i < text_len {
+        remember ch = char_at(text, i)
+        remember code = char_code(ch)
+
+        # If lowercase letter (a-z), convert to uppercase
+        if code >= 97 and code <= 122 {
+            ch = char_from_code(code - 32)
+        }
+
+        result = "${result}${ch}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh lower(text) {
+    # Convert to lowercase
+    remember result = ""
+    remember i = 0
+    remember text_len = string_length(text)
+
+    while i < text_len {
+        remember ch = char_at(text, i)
+        remember code = char_code(ch)
+
+        # If uppercase letter (A-Z), convert to lowercase
+        if code >= 65 and code <= 90 {
+            ch = char_from_code(code + 32)
+        }
+
+        result = "${result}${ch}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh capitalize(text) {
+    # Capitalize first character
+    remember text_len = string_length(text)
+    if text_len == 0 {
+        exhale text
+    }
+
+    remember first = upper(char_at(text, 0))
+    remember rest = lower(substring(text, 1, text_len))
+
+    exhale "${first}${rest}"
+}
+
+sigh title(text) {
+    # Convert to title case (capitalize each word)
+    remember words = split(text, " ")
+    remember result = []
+
+    for word in words {
+        result = append(result, capitalize(word))
+    }
+
+    exhale join(result, " ")
+}
+
+sigh swap_case(text) {
+    # Swap case of all letters
+    remember result = ""
+    remember i = 0
+    remember text_len = string_length(text)
+
+    while i < text_len {
+        remember ch = char_at(text, i)
+        remember code = char_code(ch)
+
+        if code >= 65 and code <= 90 {
+            # Uppercase to lowercase
+            ch = char_from_code(code + 32)
+        } else {
+            if code >= 97 and code <= 122 {
+                # Lowercase to uppercase
+                ch = char_from_code(code - 32)
+            }
+        }
+
+        result = "${result}${ch}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# PREDICATES
+# ============================================================================
+
+sigh startswith(text, prefix) {
+    # Check if text starts with prefix
+    remember text_len = string_length(text)
+    remember prefix_len = string_length(prefix)
+
+    if prefix_len > text_len {
+        exhale no
+    }
+
+    remember i = 0
+    while i < prefix_len {
+        if char_at(text, i) != char_at(prefix, i) {
+            exhale no
+        }
+        i = i + 1
+    }
+
+    exhale yes
+}
+
+sigh endswith(text, suffix) {
+    # Check if text ends with suffix
+    remember text_len = string_length(text)
+    remember suffix_len = string_length(suffix)
+
+    if suffix_len > text_len {
+        exhale no
+    }
+
+    remember offset = text_len - suffix_len
+    remember i = 0
+
+    while i < suffix_len {
+        if char_at(text, offset + i) != char_at(suffix, i) {
+            exhale no
+        }
+        i = i + 1
+    }
+
+    exhale yes
+}
+
+sigh is_alpha(text) {
+    # Check if all characters are alphabetic
+    remember text_len = string_length(text)
+    if text_len == 0 {
+        exhale no
+    }
+
+    remember i = 0
+    while i < text_len {
+        remember code = char_code(char_at(text, i))
+        if not ((code >= 65 and code <= 90) or (code >= 97 and code <= 122)) {
+            exhale no
+        }
+        i = i + 1
+    }
+
+    exhale yes
+}
+
+sigh is_digit(text) {
+    # Check if all characters are digits
+    remember text_len = string_length(text)
+    if text_len == 0 {
+        exhale no
+    }
+
+    remember i = 0
+    while i < text_len {
+        remember code = char_code(char_at(text, i))
+        if not (code >= 48 and code <= 57) {
+            exhale no
+        }
+        i = i + 1
+    }
+
+    exhale yes
+}
+
+sigh is_alnum(text) {
+    # Check if all characters are alphanumeric
+    remember text_len = string_length(text)
+    if text_len == 0 {
+        exhale no
+    }
+
+    remember i = 0
+    while i < text_len {
+        remember code = char_code(char_at(text, i))
+        remember valid = (code >= 48 and code <= 57) or (code >= 65 and code <= 90) or (code >= 97 and code <= 122)
+        if not valid {
+            exhale no
+        }
+        i = i + 1
+    }
+
+    exhale yes
+}
+
+sigh is_space(text) {
+    # Check if all characters are whitespace
+    remember text_len = string_length(text)
+    if text_len == 0 {
+        exhale no
+    }
+
+    remember i = 0
+    while i < text_len {
+        remember ch = char_at(text, i)
+        if not contains_char(" \t\n\r", ch) {
+            exhale no
+        }
+        i = i + 1
+    }
+
+    exhale yes
+}
+
+# ============================================================================
+# FORMATTING
+# ============================================================================
+
+sigh format(template, values) {
+    # Format string with positional arguments
+    # format("Hello {0}, you have {1} messages", ["Alice", 5])
+
+    remember result = template
+    remember i = 0
+
+    for value in values {
+        remember placeholder = "{${i}}"
+        result = replace(result, placeholder, to_string(value), -1)
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh pad_left(text, width, fill_char) {
+    # Pad string on left to width
+    if fill_char == void {
+        fill_char = " "
+    }
+
+    remember text_len = string_length(text)
+    if text_len >= width {
+        exhale text
+    }
+
+    remember padding = ""
+    remember i = 0
+    while i < width - text_len {
+        padding = "${padding}${fill_char}"
+        i = i + 1
+    }
+
+    exhale "${padding}${text}"
+}
+
+sigh pad_right(text, width, fill_char) {
+    # Pad string on right to width
+    if fill_char == void {
+        fill_char = " "
+    }
+
+    remember text_len = string_length(text)
+    if text_len >= width {
+        exhale text
+    }
+
+    remember padding = ""
+    remember i = 0
+    while i < width - text_len {
+        padding = "${padding}${fill_char}"
+        i = i + 1
+    }
+
+    exhale "${text}${padding}"
+}
+
+sigh center(text, width, fill_char) {
+    # Center string in width
+    if fill_char == void {
+        fill_char = " "
+    }
+
+    remember text_len = string_length(text)
+    if text_len >= width {
+        exhale text
+    }
+
+    remember total_padding = width - text_len
+    remember left_padding = total_padding / 2
+    remember right_padding = total_padding - left_padding
+
+    remember left = ""
+    remember i = 0
+    while i < left_padding {
+        left = "${left}${fill_char}"
+        i = i + 1
+    }
+
+    remember right = ""
+    i = 0
+    while i < right_padding {
+        right = "${right}${fill_char}"
+        i = i + 1
+    }
+
+    exhale "${left}${text}${right}"
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh reverse(text) {
+    # Reverse a string
+    remember result = ""
+    remember i = string_length(text) - 1
+
+    while i >= 0 {
+        result = "${result}${char_at(text, i)}"
+        i = i - 1
+    }
+
+    exhale result
+}
+
+sigh repeat(text, times) {
+    # Repeat string n times
+    remember result = ""
+    remember i = 0
+
+    while i < times {
+        result = "${result}${text}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh truncate(text, max_length, suffix) {
+    # Truncate string to max length
+    if suffix == void {
+        suffix = "..."
+    }
+
+    remember text_len = string_length(text)
+    if text_len <= max_length {
+        exhale text
+    }
+
+    remember suffix_len = string_length(suffix)
+    remember cut_point = max_length - suffix_len
+
+    if cut_point < 0 {
+        cut_point = 0
+    }
+
+    exhale "${substring(text, 0, cut_point)}${suffix}"
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh contains_char(haystack, needle) {
+    # Check if character needle is in string haystack
+    remember i = 0
+    remember len = string_length(haystack)
+
+    while i < len {
+        if char_at(haystack, i) == needle {
+            exhale yes
+        }
+        i = i + 1
+    }
+
+    exhale no
+}
+
+sigh lines(text) {
+    # Split text into lines
+    exhale split(text, "\n")
+}
+
+sigh words(text) {
+    # Split text into words (by whitespace)
+    remember trimmed = strip(text)
+    remember parts = split(trimmed, " ")
+    remember result = []
+
+    # Filter out empty strings
+    for part in parts {
+        if string_length(strip(part)) > 0 {
+            result = append(result, strip(part))
+        }
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    join, split, strip, lstrip, rstrip,
+    replace, contains, index_of, last_index_of, count_occurrences,
+    upper, lower, capitalize, title, swap_case,
+    startswith, endswith,
+    is_alpha, is_digit, is_alnum, is_space,
+    format, pad_left, pad_right, center,
+    reverse, repeat, truncate,
+    lines, words
+}

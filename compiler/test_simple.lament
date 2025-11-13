@@ -1,0 +1,34 @@
+# Simple test program for the Lament compiler
+# Tests basic arithmetic, variables, and confess statements
+
+confess "=== Lament Compiler Test ==="
+
+# Basic arithmetic
+remember x = 10
+remember y = 20
+remember sum = x + y
+
+confess "Variables:"
+confess x
+confess y
+confess sum
+
+# More complex expressions
+remember result = (x + y) * 2 - 5
+
+confess "Complex expression result:"
+confess result
+
+# Conditional
+if result > 50 {
+    confess "Result is large!"
+}
+
+# Loop
+remember i = 0
+while i < 5 {
+    confess i
+    i = i + 1
+}
+
+confess "=== Test Complete ==="

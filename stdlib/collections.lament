@@ -1,0 +1,818 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - COLLECTIONS MODULE
+# ============================================================================
+# Advanced data structures and collection utilities
+# Provides List, Dict, Set, Queue, Stack, PriorityQueue, Deque, Counter
+# ============================================================================
+
+# ============================================================================
+# LIST UTILITIES (Enhanced list operations)
+# ============================================================================
+
+sigh List_new() {
+    # Create a new list wrapper with enhanced operations
+    remember data = []
+
+    remember obj = {
+        "data": data,
+        "push": void,
+        "pop": void,
+        "peek": void,
+        "size": void,
+        "is_empty": void,
+        "clear": void,
+        "contains": void,
+        "index_of": void
+    }
+
+    sigh push_fn(item) {
+        obj["data"] = append(obj["data"], item)
+        exhale obj
+    }
+
+    sigh pop_fn() {
+        remember list_data = obj["data"]
+        remember size = length_of(list_data)
+        if size == 0 {
+            raise "Cannot pop from empty list"
+        }
+        remember last = list_data[size - 1]
+        obj["data"] = slice(list_data, 0, size - 1)
+        exhale last
+    }
+
+    sigh peek_fn() {
+        remember list_data = obj["data"]
+        remember size = length_of(list_data)
+        if size == 0 {
+            raise "Cannot peek empty list"
+        }
+        exhale list_data[size - 1]
+    }
+
+    sigh size_fn() {
+        exhale length_of(obj["data"])
+    }
+
+    sigh is_empty_fn() {
+        exhale length_of(obj["data"]) == 0
+    }
+
+    sigh clear_fn() {
+        obj["data"] = []
+        exhale obj
+    }
+
+    sigh contains_fn(item) {
+        for element in obj["data"] {
+            if element == item {
+                exhale yes
+            }
+        }
+        exhale no
+    }
+
+    sigh index_of_fn(item) {
+        remember i = 0
+        for element in obj["data"] {
+            if element == item {
+                exhale i
+            }
+            i = i + 1
+        }
+        exhale -1
+    }
+
+    obj["push"] = push_fn
+    obj["pop"] = pop_fn
+    obj["peek"] = peek_fn
+    obj["size"] = size_fn
+    obj["is_empty"] = is_empty_fn
+    obj["clear"] = clear_fn
+    obj["contains"] = contains_fn
+    obj["index_of"] = index_of_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# DICT UTILITIES (Enhanced dictionary operations)
+# ============================================================================
+
+sigh Dict_new() {
+    # Create a new dictionary wrapper
+    remember data = {}
+
+    remember obj = {
+        "data": data,
+        "get": void,
+        "set": void,
+        "has": void,
+        "remove": void,
+        "keys": void,
+        "values": void,
+        "items": void,
+        "size": void,
+        "clear": void
+    }
+
+    sigh get_fn(key, default_val) {
+        remember dict_data = obj["data"]
+        if has_key(dict_data, key) {
+            exhale dict_data[key]
+        }
+        exhale default_val
+    }
+
+    sigh set_fn(key, value) {
+        obj["data"][key] = value
+        exhale obj
+    }
+
+    sigh has_fn(key) {
+        exhale has_key(obj["data"], key)
+    }
+
+    sigh remove_fn(key) {
+        remember dict_data = obj["data"]
+        if not has_key(dict_data, key) {
+            raise "Key not found: ${key}"
+        }
+        obj["data"] = delete_key(dict_data, key)
+        exhale obj
+    }
+
+    sigh keys_fn() {
+        exhale dict_keys(obj["data"])
+    }
+
+    sigh values_fn() {
+        exhale dict_values(obj["data"])
+    }
+
+    sigh items_fn() {
+        remember result = []
+        remember keys_list = dict_keys(obj["data"])
+        for key in keys_list {
+            remember pair = [key, obj["data"][key]]
+            result = append(result, pair)
+        }
+        exhale result
+    }
+
+    sigh size_fn() {
+        exhale length_of(dict_keys(obj["data"]))
+    }
+
+    sigh clear_fn() {
+        obj["data"] = {}
+        exhale obj
+    }
+
+    obj["get"] = get_fn
+    obj["set"] = set_fn
+    obj["has"] = has_fn
+    obj["remove"] = remove_fn
+    obj["keys"] = keys_fn
+    obj["values"] = values_fn
+    obj["items"] = items_fn
+    obj["size"] = size_fn
+    obj["clear"] = clear_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# SET (Unique collection)
+# ============================================================================
+
+sigh Set_new() {
+    # Create a new set (unique elements only)
+    remember data = {}
+
+    remember obj = {
+        "data": data,
+        "add": void,
+        "remove": void,
+        "contains": void,
+        "size": void,
+        "to_list": void,
+        "union": void,
+        "intersection": void,
+        "difference": void,
+        "is_subset": void
+    }
+
+    sigh add_fn(item) {
+        remember key = to_string(item)
+        obj["data"][key] = item
+        exhale obj
+    }
+
+    sigh remove_fn(item) {
+        remember key = to_string(item)
+        if has_key(obj["data"], key) {
+            obj["data"] = delete_key(obj["data"], key)
+        }
+        exhale obj
+    }
+
+    sigh contains_fn(item) {
+        remember key = to_string(item)
+        exhale has_key(obj["data"], key)
+    }
+
+    sigh size_fn() {
+        exhale length_of(dict_keys(obj["data"]))
+    }
+
+    sigh to_list_fn() {
+        exhale dict_values(obj["data"])
+    }
+
+    sigh union_fn(other_set) {
+        remember result = Set_new()
+        # Add all from this set
+        remember items1 = dict_values(obj["data"])
+        for item in items1 {
+            result["add"](item)
+        }
+        # Add all from other set
+        remember items2 = dict_values(other_set["data"])
+        for item in items2 {
+            result["add"](item)
+        }
+        exhale result
+    }
+
+    sigh intersection_fn(other_set) {
+        remember result = Set_new()
+        remember items = dict_values(obj["data"])
+        for item in items {
+            if other_set["contains"](item) {
+                result["add"](item)
+            }
+        }
+        exhale result
+    }
+
+    sigh difference_fn(other_set) {
+        remember result = Set_new()
+        remember items = dict_values(obj["data"])
+        for item in items {
+            if not other_set["contains"](item) {
+                result["add"](item)
+            }
+        }
+        exhale result
+    }
+
+    sigh is_subset_fn(other_set) {
+        remember items = dict_values(obj["data"])
+        for item in items {
+            if not other_set["contains"](item) {
+                exhale no
+            }
+        }
+        exhale yes
+    }
+
+    obj["add"] = add_fn
+    obj["remove"] = remove_fn
+    obj["contains"] = contains_fn
+    obj["size"] = size_fn
+    obj["to_list"] = to_list_fn
+    obj["union"] = union_fn
+    obj["intersection"] = intersection_fn
+    obj["difference"] = difference_fn
+    obj["is_subset"] = is_subset_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# QUEUE (FIFO - First In First Out)
+# ============================================================================
+
+sigh Queue_new() {
+    # Create a new queue
+    remember data = []
+
+    remember obj = {
+        "data": data,
+        "enqueue": void,
+        "dequeue": void,
+        "peek": void,
+        "size": void,
+        "is_empty": void,
+        "clear": void
+    }
+
+    sigh enqueue_fn(item) {
+        obj["data"] = append(obj["data"], item)
+        exhale obj
+    }
+
+    sigh dequeue_fn() {
+        remember queue_data = obj["data"]
+        remember size = length_of(queue_data)
+        if size == 0 {
+            raise "Cannot dequeue from empty queue"
+        }
+        remember first = queue_data[0]
+        obj["data"] = slice(queue_data, 1, void)
+        exhale first
+    }
+
+    sigh peek_fn() {
+        remember queue_data = obj["data"]
+        remember size = length_of(queue_data)
+        if size == 0 {
+            raise "Cannot peek empty queue"
+        }
+        exhale queue_data[0]
+    }
+
+    sigh size_fn() {
+        exhale length_of(obj["data"])
+    }
+
+    sigh is_empty_fn() {
+        exhale length_of(obj["data"]) == 0
+    }
+
+    sigh clear_fn() {
+        obj["data"] = []
+        exhale obj
+    }
+
+    obj["enqueue"] = enqueue_fn
+    obj["dequeue"] = dequeue_fn
+    obj["peek"] = peek_fn
+    obj["size"] = size_fn
+    obj["is_empty"] = is_empty_fn
+    obj["clear"] = clear_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# STACK (LIFO - Last In First Out)
+# ============================================================================
+
+sigh Stack_new() {
+    # Create a new stack
+    remember data = []
+
+    remember obj = {
+        "data": data,
+        "push": void,
+        "pop": void,
+        "peek": void,
+        "size": void,
+        "is_empty": void,
+        "clear": void
+    }
+
+    sigh push_fn(item) {
+        obj["data"] = append(obj["data"], item)
+        exhale obj
+    }
+
+    sigh pop_fn() {
+        remember stack_data = obj["data"]
+        remember size = length_of(stack_data)
+        if size == 0 {
+            raise "Cannot pop from empty stack"
+        }
+        remember last = stack_data[size - 1]
+        obj["data"] = slice(stack_data, 0, size - 1)
+        exhale last
+    }
+
+    sigh peek_fn() {
+        remember stack_data = obj["data"]
+        remember size = length_of(stack_data)
+        if size == 0 {
+            raise "Cannot peek empty stack"
+        }
+        exhale stack_data[size - 1]
+    }
+
+    sigh size_fn() {
+        exhale length_of(obj["data"])
+    }
+
+    sigh is_empty_fn() {
+        exhale length_of(obj["data"]) == 0
+    }
+
+    sigh clear_fn() {
+        obj["data"] = []
+        exhale obj
+    }
+
+    obj["push"] = push_fn
+    obj["pop"] = pop_fn
+    obj["peek"] = peek_fn
+    obj["size"] = size_fn
+    obj["is_empty"] = is_empty_fn
+    obj["clear"] = clear_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# PRIORITY QUEUE (Min-heap based)
+# ============================================================================
+
+sigh PriorityQueue_new() {
+    # Create a new priority queue (min-heap)
+    remember data = []
+
+    remember obj = {
+        "data": data,
+        "insert": void,
+        "extract_min": void,
+        "peek_min": void,
+        "size": void,
+        "is_empty": void
+    }
+
+    sigh insert_fn(priority, item) {
+        remember entry = [priority, item]
+        obj["data"] = append(obj["data"], entry)
+        remember heap = obj["data"]
+
+        # Bubble up
+        remember idx = length_of(heap) - 1
+        while idx > 0 {
+            remember parent_idx = (idx - 1) / 2
+            if heap[idx][0] < heap[parent_idx][0] {
+                remember temp = heap[idx]
+                heap[idx] = heap[parent_idx]
+                heap[parent_idx] = temp
+                idx = parent_idx
+            } else {
+                idx = 0  # Break
+            }
+        }
+
+        obj["data"] = heap
+        exhale obj
+    }
+
+    sigh extract_min_fn() {
+        remember heap = obj["data"]
+        remember size = length_of(heap)
+
+        if size == 0 {
+            raise "Cannot extract from empty priority queue"
+        }
+
+        remember min_entry = heap[0]
+        remember last_entry = heap[size - 1]
+        heap = slice(heap, 0, size - 1)
+
+        if length_of(heap) > 0 {
+            heap[0] = last_entry
+
+            # Bubble down
+            remember idx = 0
+            remember heap_size = length_of(heap)
+
+            while idx < heap_size {
+                remember left = 2 * idx + 1
+                remember right = 2 * idx + 2
+                remember smallest = idx
+
+                if left < heap_size and heap[left][0] < heap[smallest][0] {
+                    smallest = left
+                }
+
+                if right < heap_size and heap[right][0] < heap[smallest][0] {
+                    smallest = right
+                }
+
+                if smallest != idx {
+                    remember temp = heap[idx]
+                    heap[idx] = heap[smallest]
+                    heap[smallest] = temp
+                    idx = smallest
+                } else {
+                    idx = heap_size  # Break
+                }
+            }
+        }
+
+        obj["data"] = heap
+        exhale min_entry[1]
+    }
+
+    sigh peek_min_fn() {
+        if length_of(obj["data"]) == 0 {
+            raise "Cannot peek empty priority queue"
+        }
+        exhale obj["data"][0][1]
+    }
+
+    sigh size_fn() {
+        exhale length_of(obj["data"])
+    }
+
+    sigh is_empty_fn() {
+        exhale length_of(obj["data"]) == 0
+    }
+
+    obj["insert"] = insert_fn
+    obj["extract_min"] = extract_min_fn
+    obj["peek_min"] = peek_min_fn
+    obj["size"] = size_fn
+    obj["is_empty"] = is_empty_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# DEQUE (Double-ended queue)
+# ============================================================================
+
+sigh Deque_new() {
+    # Create a new double-ended queue
+    remember data = []
+
+    remember obj = {
+        "data": data,
+        "push_front": void,
+        "push_back": void,
+        "pop_front": void,
+        "pop_back": void,
+        "peek_front": void,
+        "peek_back": void,
+        "size": void,
+        "is_empty": void
+    }
+
+    sigh push_front_fn(item) {
+        remember new_data = [item]
+        for element in obj["data"] {
+            new_data = append(new_data, element)
+        }
+        obj["data"] = new_data
+        exhale obj
+    }
+
+    sigh push_back_fn(item) {
+        obj["data"] = append(obj["data"], item)
+        exhale obj
+    }
+
+    sigh pop_front_fn() {
+        remember deque_data = obj["data"]
+        remember size = length_of(deque_data)
+        if size == 0 {
+            raise "Cannot pop from empty deque"
+        }
+        remember first = deque_data[0]
+        obj["data"] = slice(deque_data, 1, void)
+        exhale first
+    }
+
+    sigh pop_back_fn() {
+        remember deque_data = obj["data"]
+        remember size = length_of(deque_data)
+        if size == 0 {
+            raise "Cannot pop from empty deque"
+        }
+        remember last = deque_data[size - 1]
+        obj["data"] = slice(deque_data, 0, size - 1)
+        exhale last
+    }
+
+    sigh peek_front_fn() {
+        remember size = length_of(obj["data"])
+        if size == 0 {
+            raise "Cannot peek empty deque"
+        }
+        exhale obj["data"][0]
+    }
+
+    sigh peek_back_fn() {
+        remember size = length_of(obj["data"])
+        if size == 0 {
+            raise "Cannot peek empty deque"
+        }
+        exhale obj["data"][size - 1]
+    }
+
+    sigh size_fn() {
+        exhale length_of(obj["data"])
+    }
+
+    sigh is_empty_fn() {
+        exhale length_of(obj["data"]) == 0
+    }
+
+    obj["push_front"] = push_front_fn
+    obj["push_back"] = push_back_fn
+    obj["pop_front"] = pop_front_fn
+    obj["pop_back"] = pop_back_fn
+    obj["peek_front"] = peek_front_fn
+    obj["peek_back"] = peek_back_fn
+    obj["size"] = size_fn
+    obj["is_empty"] = is_empty_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# COUNTER (Count occurrences)
+# ============================================================================
+
+sigh Counter_new(items) {
+    # Create a counter to count occurrences
+    remember data = {}
+
+    if items != void {
+        for item in items {
+            remember key = to_string(item)
+            remember count = 0
+            if has_key(data, key) {
+                count = data[key]
+            }
+            data[key] = count + 1
+        }
+    }
+
+    remember obj = {
+        "data": data,
+        "count": void,
+        "increment": void,
+        "decrement": void,
+        "most_common": void,
+        "total": void
+    }
+
+    sigh count_fn(item) {
+        remember key = to_string(item)
+        if has_key(obj["data"], key) {
+            exhale obj["data"][key]
+        }
+        exhale 0
+    }
+
+    sigh increment_fn(item, amount) {
+        if amount == void {
+            amount = 1
+        }
+        remember key = to_string(item)
+        remember current = 0
+        if has_key(obj["data"], key) {
+            current = obj["data"][key]
+        }
+        obj["data"][key] = current + amount
+        exhale obj
+    }
+
+    sigh decrement_fn(item, amount) {
+        if amount == void {
+            amount = 1
+        }
+        remember key = to_string(item)
+        if has_key(obj["data"], key) {
+            obj["data"][key] = obj["data"][key] - amount
+        }
+        exhale obj
+    }
+
+    sigh most_common_fn(n) {
+        # Return n most common items as [[item, count], ...]
+        remember pairs = []
+        remember keys = dict_keys(obj["data"])
+
+        for key in keys {
+            remember pair = [key, obj["data"][key]]
+            pairs = append(pairs, pair)
+        }
+
+        # Sort by count (bubble sort)
+        remember size = length_of(pairs)
+        remember i = 0
+
+        while i < size {
+            remember j = 0
+            while j < size - i - 1 {
+                if pairs[j][1] < pairs[j + 1][1] {
+                    remember temp = pairs[j]
+                    pairs[j] = pairs[j + 1]
+                    pairs[j + 1] = temp
+                }
+                j = j + 1
+            }
+            i = i + 1
+        }
+
+        # Return top n
+        if n == void or n >= size {
+            exhale pairs
+        }
+
+        remember result = []
+        remember k = 0
+        while k < n {
+            result = append(result, pairs[k])
+            k = k + 1
+        }
+
+        exhale result
+    }
+
+    sigh total_fn() {
+        remember sum = 0
+        remember counts = dict_values(obj["data"])
+        for count in counts {
+            sum = sum + count
+        }
+        exhale sum
+    }
+
+    obj["count"] = count_fn
+    obj["increment"] = increment_fn
+    obj["decrement"] = decrement_fn
+    obj["most_common"] = most_common_fn
+    obj["total"] = total_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# DEFAULT DICT (Dictionary with default values)
+# ============================================================================
+
+sigh DefaultDict_new(default_factory) {
+    # Create a dictionary that returns default value for missing keys
+    remember data = {}
+
+    remember obj = {
+        "data": data,
+        "default_factory": default_factory,
+        "get": void,
+        "set": void,
+        "has": void,
+        "keys": void,
+        "values": void
+    }
+
+    sigh get_fn(key) {
+        remember dict_data = obj["data"]
+        if has_key(dict_data, key) {
+            exhale dict_data[key]
+        }
+
+        # Create default value
+        remember default_val = obj["default_factory"]()
+        obj["data"][key] = default_val
+        exhale default_val
+    }
+
+    sigh set_fn(key, value) {
+        obj["data"][key] = value
+        exhale obj
+    }
+
+    sigh has_fn(key) {
+        exhale has_key(obj["data"], key)
+    }
+
+    sigh keys_fn() {
+        exhale dict_keys(obj["data"])
+    }
+
+    sigh values_fn() {
+        exhale dict_values(obj["data"])
+    }
+
+    obj["get"] = get_fn
+    obj["set"] = set_fn
+    obj["has"] = has_fn
+    obj["keys"] = keys_fn
+    obj["values"] = values_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    List_new,
+    Dict_new,
+    Set_new,
+    Queue_new,
+    Stack_new,
+    PriorityQueue_new,
+    Deque_new,
+    Counter_new,
+    DefaultDict_new
+}

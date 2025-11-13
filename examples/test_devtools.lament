@@ -1,0 +1,69 @@
+# Lament Development Tools Test File
+# This file demonstrates various features for testing the dev tools
+
+# Calculate factorial recursively
+#
+# Parameters:
+#   n - The number to calculate factorial for
+#
+# Returns: The factorial of n
+#
+# Example:
+#   remember result = factorial(5)
+#   confess result  # Outputs: 120
+sigh factorial(n) {
+  if n <= 1 {
+    exhale 1
+  }
+  exhale n * factorial(n - 1)
+}
+
+# Calculate sum of a list
+#
+# Parameters:
+#   items - List of numbers to sum
+#
+# Returns: Sum of all items
+sigh sum_list(items) {
+  remember total = 0
+  for item in items {
+    total = total + item
+  }
+  exhale total
+}
+
+# Main execution
+remember x = 5
+remember y = 10
+remember z = x + y
+
+confess "Testing factorial..."
+remember fact = factorial(5)
+confess fact
+
+confess "Testing sum..."
+remember numbers = [1, 2, 3, 4, 5]
+remember sum = sum_list(numbers)
+confess sum
+
+# Test temporal features
+remember counter = 0
+counter = 1
+counter = 2
+counter = 3
+
+confess "Current counter:"
+confess counter
+confess "Original counter:"
+confess counter@origin
+confess "Counter age:"
+confess counter@age
+
+# Test while loop
+remember i = 0
+while i < 5 {
+  confess i
+  i = i + 1
+}
+
+confess "All tests complete!"

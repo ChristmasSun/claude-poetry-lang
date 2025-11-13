@@ -84,6 +84,24 @@ from lament.bytecode import (
 )
 
 # ============================================================================
+# METAPROGRAMMING
+# ============================================================================
+from lament.metaprogramming import (
+    # Pattern matching
+    Pattern, PatternType, PatternMatcher,
+    # Hygienic macros
+    HygienicMacro, MacroDefinition,
+    # Code generation
+    CodeGenerator, CodeTemplate,
+    # AST manipulation
+    ASTManipulator, ASTVisitor, ASTTransformer,
+    # Reflection
+    Reflect, TypeInfo, MethodInfo,
+    # Utilities
+    create_macro, create_pattern, setup_standard_macros
+)
+
+# ============================================================================
 # VERSION
 # ============================================================================
 __version__ = "1.0.0"
@@ -142,6 +160,20 @@ __all__ = [
     # ===== BYTECODE =====
     'BytecodeInstruction', 'Bytecode', 'BytecodeCompiler', 'BytecodeVM',
 
+    # ===== METAPROGRAMMING =====
+    # Pattern matching
+    'Pattern', 'PatternType', 'PatternMatcher',
+    # Hygienic macros
+    'HygienicMacro', 'MacroDefinition',
+    # Code generation
+    'CodeGenerator', 'CodeTemplate',
+    # AST manipulation
+    'ASTManipulator', 'ASTVisitor', 'ASTTransformer',
+    # Reflection
+    'Reflect', 'TypeInfo', 'MethodInfo',
+    # Utilities
+    'create_macro', 'create_pattern', 'setup_standard_macros',
+
     # ===== VERSION =====
     '__version__'
 ]
@@ -166,7 +198,8 @@ def get_info():
             'parser': 'AST construction and parsing',
             'analysis': 'Emotional static analysis',
             'neural': 'Neural network primitives and training',
-            'bytecode': 'Bytecode compiler and virtual machine'
+            'bytecode': 'Bytecode compiler and virtual machine',
+            'metaprogramming': 'Hygienic macros, code generation, AST manipulation, and reflection'
         },
         'has_numpy': HAS_NUMPY
     }

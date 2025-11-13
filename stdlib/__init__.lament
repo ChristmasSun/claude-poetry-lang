@@ -1,0 +1,349 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - MODULE INDEX
+# ============================================================================
+# Central index for all standard library modules
+# Import this file to get information about available modules
+# ============================================================================
+
+# ============================================================================
+# MODULE METADATA
+# ============================================================================
+
+remember STDLIB_VERSION = "1.0.0"
+remember STDLIB_MODULES = [
+    "core",
+    "collections",
+    "math",
+    "strings",
+    "files",
+    "network",
+    "crypto",
+    "datetime"
+]
+
+remember MODULE_INFO = {
+    "core": {
+        "name": "core",
+        "description": "Core utilities and fundamental operations",
+        "path": "stdlib/core.lament",
+        "exports": [
+            "print", "input", "range", "map", "filter", "reduce", "foreach",
+            "str", "int", "float", "bool", "type", "isinstance",
+            "len", "append", "extend", "slice", "reverse", "sort",
+            "enumerate", "zip", "all", "any",
+            "identity", "const", "compose", "partial", "join", "repeat"
+        ]
+    },
+
+    "collections": {
+        "name": "collections",
+        "description": "Advanced data structures and collection utilities",
+        "path": "stdlib/collections.lament",
+        "exports": [
+            "List_new", "Dict_new", "Set_new", "Queue_new", "Stack_new",
+            "PriorityQueue_new", "Deque_new", "Counter_new", "DefaultDict_new"
+        ]
+    },
+
+    "math": {
+        "name": "math",
+        "description": "Mathematical functions and constants",
+        "path": "stdlib/math.lament",
+        "exports": [
+            "PI", "E", "TAU", "PHI", "SQRT2", "LN2", "LN10",
+            "abs", "sign", "max", "min", "clamp",
+            "pow", "sqrt", "cbrt",
+            "floor", "ceil", "round", "trunc",
+            "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+            "sinh", "cosh", "tanh",
+            "exp", "ln", "log", "log10", "log2",
+            "sum", "product", "mean", "avg", "median", "variance", "stdev",
+            "gcd", "lcm", "factorial", "is_prime", "fibonacci",
+            "degrees", "radians"
+        ]
+    },
+
+    "strings": {
+        "name": "strings",
+        "description": "String manipulation and text processing utilities",
+        "path": "stdlib/strings.lament",
+        "exports": [
+            "join", "split", "strip", "lstrip", "rstrip",
+            "replace", "contains", "index_of", "last_index_of", "count_occurrences",
+            "upper", "lower", "capitalize", "title", "swap_case",
+            "startswith", "endswith",
+            "is_alpha", "is_digit", "is_alnum", "is_space",
+            "format", "pad_left", "pad_right", "center",
+            "reverse", "repeat", "truncate",
+            "lines", "words"
+        ]
+    },
+
+    "files": {
+        "name": "files",
+        "description": "File I/O and filesystem operations",
+        "path": "stdlib/files.lament",
+        "exports": [
+            "read_file", "read_lines", "read_bytes", "read_json",
+            "write_file", "write_lines", "write_bytes", "write_json",
+            "append_file", "append_lines",
+            "exists", "is_file", "is_dir", "file_size", "file_modified",
+            "delete", "rename", "move", "copy",
+            "mkdir", "rmdir", "listdir", "walk",
+            "join_path", "split_path", "basename", "dirname", "extname", "stem",
+            "abspath", "normpath",
+            "glob", "matches_pattern", "temp_file"
+        ]
+    },
+
+    "network": {
+        "name": "network",
+        "description": "Networking and HTTP operations",
+        "path": "stdlib/network.lament",
+        "exports": [
+            "http_get", "http_post", "http_put", "http_delete", "http_patch", "http_head",
+            "parse_url", "build_url", "parse_query_string", "build_query_string",
+            "url_encode", "url_decode",
+            "parse_json", "to_json",
+            "WebSocket_connect", "Socket_connect", "UDPSocket_create",
+            "download", "upload", "is_url"
+        ]
+    },
+
+    "crypto": {
+        "name": "crypto",
+        "description": "Cryptography and security utilities",
+        "path": "stdlib/crypto.lament",
+        "exports": [
+            "hash_md5", "hash_sha1", "hash_sha256", "hash_sha512", "hash", "hash_file",
+            "hmac", "hmac_sha256", "verify_hmac",
+            "encrypt_aes", "decrypt_aes", "encrypt", "decrypt",
+            "hash_password", "verify_password",
+            "random", "random_int", "random_bytes", "random_string", "random_hex", "uuid",
+            "base64_encode", "base64_decode", "hex_encode", "hex_decode",
+            "bytes_to_hex", "hex_to_bytes",
+            "pbkdf2", "derive_key",
+            "sign_data", "verify_signature",
+            "constant_time_compare", "secure_random_token", "checksum"
+        ]
+    },
+
+    "datetime": {
+        "name": "datetime",
+        "description": "Date and time operations",
+        "path": "stdlib/datetime.lament",
+        "exports": [
+            "now", "today", "utc_now",
+            "DateTime_new", "from_timestamp",
+            "TimeDelta_new", "timedelta",
+            "parse_date", "format_date",
+            "add_days", "add_hours", "add_minutes", "add_seconds", "subtract_dates",
+            "is_leap_year", "days_in_month", "weekday", "weekday_name", "month_name",
+            "is_weekend", "is_weekday",
+            "Timezone_new", "utc_timezone",
+            "MONTH_NAMES", "MONTH_NAMES_SHORT", "DAY_NAMES", "DAY_NAMES_SHORT"
+        ]
+    }
+}
+
+# ============================================================================
+# MODULE INFORMATION FUNCTIONS
+# ============================================================================
+
+sigh list_modules() {
+    # List all available standard library modules
+    exhale STDLIB_MODULES
+}
+
+sigh module_info(module_name) {
+    # Get information about a specific module
+    if has_key(MODULE_INFO, module_name) {
+        exhale MODULE_INFO[module_name]
+    }
+    raise "Unknown module: ${module_name}"
+}
+
+sigh list_exports(module_name) {
+    # List all exports from a module
+    if has_key(MODULE_INFO, module_name) {
+        exhale MODULE_INFO[module_name]["exports"]
+    }
+    raise "Unknown module: ${module_name}"
+}
+
+sigh search_function(function_name) {
+    # Find which module(s) contain a function
+    remember results = []
+
+    for module_name in STDLIB_MODULES {
+        remember info = MODULE_INFO[module_name]
+        remember exports = info["exports"]
+
+        for export in exports {
+            if export == function_name {
+                results = append(results, module_name)
+            }
+        }
+    }
+
+    if length_of(results) == 0 {
+        confess "Function '${function_name}' not found in standard library"
+        exhale []
+    }
+
+    exhale results
+}
+
+sigh help(topic) {
+    # Get help on a module or function
+    if topic == void {
+        confess "Lament Standard Library v${STDLIB_VERSION}"
+        confess ""
+        confess "Available modules:"
+
+        for module_name in STDLIB_MODULES {
+            remember info = MODULE_INFO[module_name]
+            confess "  ${module_name}: ${info["description"]}"
+        }
+
+        confess ""
+        confess "Usage:"
+        confess "  help(\"module_name\") - Get module information"
+        confess "  list_modules() - List all modules"
+        confess "  search_function(\"func_name\") - Find function"
+
+        exhale void
+    }
+
+    # Check if it's a module
+    if has_key(MODULE_INFO, topic) {
+        remember info = MODULE_INFO[topic]
+        confess "Module: ${info["name"]}"
+        confess "Description: ${info["description"]}"
+        confess "Path: ${info["path"]}"
+        confess ""
+        confess "Exports (${length_of(info["exports"])} functions):"
+
+        remember exports = info["exports"]
+        remember i = 0
+
+        for export in exports {
+            confess "  - ${export}"
+        }
+
+        confess ""
+        confess "Usage:"
+        confess "  import { function_name } from \"${info["name"]}.lament\""
+
+        exhale void
+    }
+
+    # Search for function
+    remember modules = search_function(topic)
+
+    if length_of(modules) > 0 {
+        confess "Function '${topic}' found in:"
+
+        for module_name in modules {
+            confess "  - ${module_name}"
+        }
+
+        confess ""
+        confess "Usage:"
+        confess "  import { ${topic} } from \"${modules[0]}.lament\""
+
+        exhale void
+    }
+
+    confess "No help available for: ${topic}"
+    exhale void
+}
+
+sigh stdlib_info() {
+    # Get overall stdlib information
+    remember total_exports = 0
+
+    for module_name in STDLIB_MODULES {
+        remember info = MODULE_INFO[module_name]
+        total_exports = total_exports + length_of(info["exports"])
+    }
+
+    remember info = {
+        "version": STDLIB_VERSION,
+        "modules": length_of(STDLIB_MODULES),
+        "total_exports": total_exports,
+        "module_list": STDLIB_MODULES
+    }
+
+    exhale info
+}
+
+# ============================================================================
+# USAGE EXAMPLES
+# ============================================================================
+
+sigh print_examples() {
+    confess "=== LAMENT STANDARD LIBRARY EXAMPLES ==="
+    confess ""
+
+    confess "1. Core utilities:"
+    confess "   import { map, filter, reduce } from \"core.lament\""
+    confess ""
+
+    confess "2. Collections:"
+    confess "   import { Queue_new, Stack_new } from \"collections.lament\""
+    confess "   remember queue = Queue_new()"
+    confess "   queue[\"enqueue\"](42)"
+    confess ""
+
+    confess "3. Math operations:"
+    confess "   import { sin, cos, PI, sqrt } from \"math.lament\""
+    confess "   remember angle = PI / 4"
+    confess "   confess sin(angle)"
+    confess ""
+
+    confess "4. String processing:"
+    confess "   import { split, join, upper } from \"strings.lament\""
+    confess "   remember words = split(\"hello world\", \" \")"
+    confess ""
+
+    confess "5. File operations:"
+    confess "   import { read_file, write_file } from \"files.lament\""
+    confess "   remember content = read_file(\"input.txt\")"
+    confess ""
+
+    confess "6. HTTP requests:"
+    confess "   import { http_get, parse_json } from \"network.lament\""
+    confess "   remember response = http_get(\"https://api.example.com\")"
+    confess ""
+
+    confess "7. Cryptography:"
+    confess "   import { hash_sha256, random_string } from \"crypto.lament\""
+    confess "   remember hash = hash_sha256(\"password\")"
+    confess ""
+
+    confess "8. Date/time:"
+    confess "   import { today, format_date } from \"datetime.lament\""
+    confess "   remember dt = today()"
+    confess "   confess dt[\"format\"](\"%Y-%m-%d\")"
+    confess ""
+
+    exhale void
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    STDLIB_VERSION,
+    STDLIB_MODULES,
+    MODULE_INFO,
+    list_modules,
+    module_info,
+    list_exports,
+    search_function,
+    help,
+    stdlib_info,
+    print_examples
+}

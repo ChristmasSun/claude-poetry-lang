@@ -1,0 +1,42 @@
+# Temporal variable demonstration
+# Shows Lament's unique timeline features
+
+confess "=== Temporal Variables Demo ==="
+
+# Create a timeline variable
+remember x = 1
+confess "Initial value:"
+confess x
+
+# Modify it over time
+x = 2
+confess "After first update:"
+confess x
+
+x = 3
+confess "After second update:"
+confess x
+
+x = 5
+confess "After third update:"
+confess x
+
+# Access temporal properties
+confess "Temporal access:"
+confess "Current value: (should be 5)"
+confess x
+
+confess "One step back: (should be 3)"
+confess x@past
+
+confess "Two steps back: (should be 2)"
+# Note: x@past(2) requires function call syntax in bytecode
+# Simplified for demo
+
+confess "Origin value: (should be 1)"
+confess x@origin
+
+confess "Age (assignment count): (should be 4)"
+confess x@age
+
+confess "=== Temporal Demo Complete ==="

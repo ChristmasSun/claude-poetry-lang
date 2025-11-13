@@ -1,0 +1,36 @@
+# Fibonacci sequence calculator
+# Demonstrates functions, recursion, and loops
+
+confess "=== Fibonacci Sequence Calculator ==="
+
+# Iterative version
+sigh fibonacci_iterative(n) {
+    if n <= 1 {
+        exhale n
+    }
+
+    remember a = 0
+    remember b = 1
+    remember i = 2
+
+    while i <= n {
+        remember temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+
+    exhale b
+}
+
+# Calculate first 10 Fibonacci numbers
+confess "First 10 Fibonacci numbers:"
+
+remember n = 0
+while n < 10 {
+    remember fib = fibonacci_iterative(n)
+    confess fib
+    n = n + 1
+}
+
+confess "=== Fibonacci Complete ==="

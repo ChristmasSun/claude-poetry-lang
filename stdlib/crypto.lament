@@ -1,0 +1,605 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - CRYPTO MODULE
+# ============================================================================
+# Cryptography and security utilities
+# Provides hashing, encryption, random generation, and encoding
+# ============================================================================
+
+# ============================================================================
+# HASHING FUNCTIONS
+# ============================================================================
+
+sigh hash_md5(data) {
+    # Compute MD5 hash
+    attempt {
+        exhale crypto_hash(data, "md5")
+    } catch error {
+        raise "MD5 hash failed: ${error}"
+    }
+}
+
+sigh hash_sha1(data) {
+    # Compute SHA-1 hash
+    attempt {
+        exhale crypto_hash(data, "sha1")
+    } catch error {
+        raise "SHA-1 hash failed: ${error}"
+    }
+}
+
+sigh hash_sha256(data) {
+    # Compute SHA-256 hash
+    attempt {
+        exhale crypto_hash(data, "sha256")
+    } catch error {
+        raise "SHA-256 hash failed: ${error}"
+    }
+}
+
+sigh hash_sha512(data) {
+    # Compute SHA-512 hash
+    attempt {
+        exhale crypto_hash(data, "sha512")
+    } catch error {
+        raise "SHA-512 hash failed: ${error}"
+    }
+}
+
+sigh hash(data, algorithm) {
+    # Generic hash function
+    if algorithm == void {
+        algorithm = "sha256"
+    }
+
+    attempt {
+        exhale crypto_hash(data, algorithm)
+    } catch error {
+        raise "Hash failed (${algorithm}): ${error}"
+    }
+}
+
+sigh hash_file(path, algorithm) {
+    # Hash contents of a file
+    if algorithm == void {
+        algorithm = "sha256"
+    }
+
+    attempt {
+        import { read_bytes } from "files.lament"
+        remember content = read_bytes(path)
+        exhale hash(content, algorithm)
+    } catch error {
+        raise "File hash failed for ${path}: ${error}"
+    }
+}
+
+# ============================================================================
+# HMAC (Hash-based Message Authentication Code)
+# ============================================================================
+
+sigh hmac(data, key, algorithm) {
+    # Compute HMAC
+    if algorithm == void {
+        algorithm = "sha256"
+    }
+
+    attempt {
+        exhale crypto_hmac(data, key, algorithm)
+    } catch error {
+        raise "HMAC failed (${algorithm}): ${error}"
+    }
+}
+
+sigh hmac_sha256(data, key) {
+    # HMAC-SHA256
+    exhale hmac(data, key, "sha256")
+}
+
+sigh verify_hmac(data, key, expected_hmac, algorithm) {
+    # Verify HMAC (constant-time comparison)
+    if algorithm == void {
+        algorithm = "sha256"
+    }
+
+    remember computed = hmac(data, key, algorithm)
+    exhale constant_time_compare(computed, expected_hmac)
+}
+
+# ============================================================================
+# ENCRYPTION / DECRYPTION
+# ============================================================================
+
+sigh encrypt_aes(plaintext, key, mode) {
+    # Encrypt data using AES
+    # mode: "CBC", "GCM", "CTR" (default: "GCM")
+
+    if mode == void {
+        mode = "GCM"
+    }
+
+    attempt {
+        remember result = crypto_encrypt(plaintext, key, "AES", mode)
+        exhale result
+    } catch error {
+        raise "AES encryption failed: ${error}"
+    }
+}
+
+sigh decrypt_aes(ciphertext, key, mode) {
+    # Decrypt data using AES
+    if mode == void {
+        mode = "GCM"
+    }
+
+    attempt {
+        remember result = crypto_decrypt(ciphertext, key, "AES", mode)
+        exhale result
+    } catch error {
+        raise "AES decryption failed: ${error}"
+    }
+}
+
+sigh encrypt(plaintext, key, algorithm, mode) {
+    # Generic encryption function
+    if algorithm == void {
+        algorithm = "AES"
+    }
+
+    if mode == void {
+        mode = "GCM"
+    }
+
+    attempt {
+        exhale crypto_encrypt(plaintext, key, algorithm, mode)
+    } catch error {
+        raise "Encryption failed (${algorithm}-${mode}): ${error}"
+    }
+}
+
+sigh decrypt(ciphertext, key, algorithm, mode) {
+    # Generic decryption function
+    if algorithm == void {
+        algorithm = "AES"
+    }
+
+    if mode == void {
+        mode = "GCM"
+    }
+
+    attempt {
+        exhale crypto_decrypt(ciphertext, key, algorithm, mode)
+    } catch error {
+        raise "Decryption failed (${algorithm}-${mode}): ${error}"
+    }
+}
+
+# ============================================================================
+# PASSWORD HASHING
+# ============================================================================
+
+sigh hash_password(password, salt) {
+    # Hash password using PBKDF2
+    if salt == void {
+        salt = random_bytes(32)
+    }
+
+    attempt {
+        remember iterations = 100000
+        remember hash_result = pbkdf2(password, salt, iterations, 32, "sha256")
+
+        remember result = {
+            "hash": hash_result,
+            "salt": salt,
+            "iterations": iterations,
+            "algorithm": "pbkdf2-sha256"
+        }
+
+        exhale result
+    } catch error {
+        raise "Password hashing failed: ${error}"
+    }
+}
+
+sigh verify_password(password, hash_info) {
+    # Verify password against hash
+    attempt {
+        remember computed = pbkdf2(
+            password,
+            hash_info["salt"],
+            hash_info["iterations"],
+            32,
+            "sha256"
+        )
+
+        exhale constant_time_compare(computed, hash_info["hash"])
+    } catch error {
+        raise "Password verification failed: ${error}"
+    }
+}
+
+# ============================================================================
+# RANDOM GENERATION
+# ============================================================================
+
+sigh random() {
+    # Generate random float between 0 and 1
+    attempt {
+        exhale crypto_random()
+    } catch error {
+        raise "Random generation failed: ${error}"
+    }
+}
+
+sigh random_int(min_val, max_val) {
+    # Generate random integer between min and max (inclusive)
+    if max_val == void {
+        max_val = min_val
+        min_val = 0
+    }
+
+    remember range = max_val - min_val + 1
+    remember rand_val = random()
+    remember result = min_val + to_int(rand_val * range)
+
+    # Ensure we don't exceed max due to rounding
+    if result > max_val {
+        result = max_val
+    }
+
+    exhale result
+}
+
+sigh random_bytes(length) {
+    # Generate random bytes
+    attempt {
+        exhale crypto_random_bytes(length)
+    } catch error {
+        raise "Random bytes generation failed: ${error}"
+    }
+}
+
+sigh random_string(length, charset) {
+    # Generate random string
+    if charset == void {
+        charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    }
+
+    remember charset_len = string_length(charset)
+    remember result = ""
+    remember i = 0
+
+    while i < length {
+        remember index = random_int(0, charset_len - 1)
+        remember ch = char_at(charset, index)
+        result = "${result}${ch}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh random_hex(length) {
+    # Generate random hex string
+    remember bytes = random_bytes(length)
+    exhale bytes_to_hex(bytes)
+}
+
+sigh uuid() {
+    # Generate UUID v4
+    attempt {
+        exhale crypto_uuid()
+    } catch error {
+        # Fallback: manual UUID generation
+        remember hex = random_hex(16)
+
+        # Format as UUID: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+        remember part1 = substring_str(hex, 0, 8)
+        remember part2 = substring_str(hex, 8, 12)
+        remember part3 = "4${substring_str(hex, 13, 16)}"  # Version 4
+        remember part4 = substring_str(hex, 16, 20)
+        remember part5 = substring_str(hex, 20, 32)
+
+        exhale "${part1}-${part2}-${part3}-${part4}-${part5}"
+    }
+}
+
+# ============================================================================
+# ENCODING / DECODING
+# ============================================================================
+
+sigh base64_encode(data) {
+    # Encode data as Base64
+    attempt {
+        exhale encode_base64(data)
+    } catch error {
+        raise "Base64 encoding failed: ${error}"
+    }
+}
+
+sigh base64_decode(encoded) {
+    # Decode Base64 data
+    attempt {
+        exhale decode_base64(encoded)
+    } catch error {
+        raise "Base64 decoding failed: ${error}"
+    }
+}
+
+sigh hex_encode(data) {
+    # Encode data as hexadecimal
+    exhale bytes_to_hex(data)
+}
+
+sigh hex_decode(hex_str) {
+    # Decode hexadecimal string
+    exhale hex_to_bytes(hex_str)
+}
+
+sigh bytes_to_hex(data) {
+    # Convert bytes to hexadecimal string
+    remember result = ""
+    remember i = 0
+    remember len = string_length(data)
+
+    while i < len {
+        remember byte = char_code(char_at(data, i))
+        remember hex = to_hex(byte)
+
+        # Pad with zero if needed
+        if string_length(hex) < 2 {
+            hex = "0${hex}"
+        }
+
+        result = "${result}${hex}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh hex_to_bytes(hex_str) {
+    # Convert hexadecimal string to bytes
+    remember result = ""
+    remember i = 0
+    remember len = string_length(hex_str)
+
+    while i < len {
+        remember hex_pair = substring_str(hex_str, i, i + 2)
+        remember byte_val = from_hex(hex_pair)
+        result = "${result}${char_from_code(byte_val)}"
+        i = i + 2
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# KEY DERIVATION
+# ============================================================================
+
+sigh pbkdf2(password, salt, iterations, key_length, hash_algo) {
+    # PBKDF2 key derivation function
+    if iterations == void {
+        iterations = 100000
+    }
+
+    if key_length == void {
+        key_length = 32
+    }
+
+    if hash_algo == void {
+        hash_algo = "sha256"
+    }
+
+    attempt {
+        exhale crypto_pbkdf2(password, salt, iterations, key_length, hash_algo)
+    } catch error {
+        raise "PBKDF2 failed: ${error}"
+    }
+}
+
+sigh derive_key(password, salt, algorithm, params) {
+    # Generic key derivation function
+    if algorithm == void {
+        algorithm = "pbkdf2"
+    }
+
+    if params == void {
+        params = {
+            "iterations": 100000,
+            "key_length": 32,
+            "hash": "sha256"
+        }
+    }
+
+    attempt {
+        if algorithm == "pbkdf2" {
+            exhale pbkdf2(
+                password,
+                salt,
+                params["iterations"],
+                params["key_length"],
+                params["hash"]
+            )
+        }
+
+        raise "Unsupported key derivation algorithm: ${algorithm}"
+    } catch error {
+        raise "Key derivation failed: ${error}"
+    }
+}
+
+# ============================================================================
+# DIGITAL SIGNATURES (Placeholder for RSA/ECDSA)
+# ============================================================================
+
+sigh sign_data(data, private_key, algorithm) {
+    # Sign data with private key
+    if algorithm == void {
+        algorithm = "RSA-SHA256"
+    }
+
+    attempt {
+        exhale crypto_sign(data, private_key, algorithm)
+    } catch error {
+        raise "Signature failed (${algorithm}): ${error}"
+    }
+}
+
+sigh verify_signature(data, signature, public_key, algorithm) {
+    # Verify signature with public key
+    if algorithm == void {
+        algorithm = "RSA-SHA256"
+    }
+
+    attempt {
+        exhale crypto_verify(data, signature, public_key, algorithm)
+    } catch error {
+        exhale no
+    }
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh constant_time_compare(a, b) {
+    # Compare two strings in constant time (prevent timing attacks)
+    remember len_a = string_length(a)
+    remember len_b = string_length(b)
+
+    # Always compare all bytes even if lengths differ
+    remember result = len_a == len_b
+    remember max_len = len_a
+
+    if len_b > max_len {
+        max_len = len_b
+    }
+
+    remember i = 0
+    while i < max_len {
+        remember char_a = ""
+        remember char_b = ""
+
+        if i < len_a {
+            char_a = char_at(a, i)
+        }
+
+        if i < len_b {
+            char_b = char_at(b, i)
+        }
+
+        if char_a != char_b {
+            result = no
+        }
+
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh secure_random_token(length) {
+    # Generate secure random token (URL-safe)
+    if length == void {
+        length = 32
+    }
+
+    remember bytes = random_bytes(length)
+    remember b64 = base64_encode(bytes)
+
+    # Make URL-safe
+    import { replace } from "strings.lament"
+    b64 = replace(b64, "+", "-", -1)
+    b64 = replace(b64, "/", "_", -1)
+    b64 = replace(b64, "=", "", -1)
+
+    # Trim to requested length
+    exhale substring_str(b64, 0, length)
+}
+
+sigh checksum(data) {
+    # Simple checksum (CRC32 equivalent using hash)
+    remember full_hash = hash_md5(data)
+    exhale substring_str(full_hash, 0, 8)
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh substring_str(text, start, end) {
+    exhale substring(text, start, end)
+}
+
+sigh to_hex(number) {
+    # Convert number to hex string
+    if number == 0 {
+        exhale "0"
+    }
+
+    remember hex_chars = "0123456789abcdef"
+    remember result = ""
+    remember n = number
+
+    while n > 0 {
+        remember digit = n % 16
+        result = "${char_at(hex_chars, digit)}${result}"
+        n = n / 16
+    }
+
+    exhale result
+}
+
+sigh from_hex(hex_str) {
+    # Convert hex string to number
+    remember result = 0
+    remember i = 0
+    remember len = string_length(hex_str)
+
+    while i < len {
+        remember ch = lower_char(char_at(hex_str, i))
+        remember digit = 0
+
+        remember code = char_code(ch)
+        if code >= 48 and code <= 57 {
+            # 0-9
+            digit = code - 48
+        } else {
+            if code >= 97 and code <= 102 {
+                # a-f
+                digit = code - 97 + 10
+            }
+        }
+
+        result = result * 16 + digit
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh lower_char(ch) {
+    remember code = char_code(ch)
+    if code >= 65 and code <= 90 {
+        exhale char_from_code(code + 32)
+    }
+    exhale ch
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    hash_md5, hash_sha1, hash_sha256, hash_sha512, hash, hash_file,
+    hmac, hmac_sha256, verify_hmac,
+    encrypt_aes, decrypt_aes, encrypt, decrypt,
+    hash_password, verify_password,
+    random, random_int, random_bytes, random_string, random_hex, uuid,
+    base64_encode, base64_decode, hex_encode, hex_decode,
+    bytes_to_hex, hex_to_bytes,
+    pbkdf2, derive_key,
+    sign_data, verify_signature,
+    constant_time_compare, secure_random_token, checksum
+}

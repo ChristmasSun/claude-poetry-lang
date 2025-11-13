@@ -1,0 +1,729 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - NETWORK MODULE
+# ============================================================================
+# Networking and HTTP operations
+# Provides HTTP requests, URL parsing, WebSocket, and socket operations
+# ============================================================================
+
+# ============================================================================
+# HTTP CLIENT
+# ============================================================================
+
+sigh http_get(url, headers, timeout) {
+    # Perform HTTP GET request
+    if headers == void {
+        headers = {}
+    }
+
+    if timeout == void {
+        timeout = 30
+    }
+
+    attempt {
+        remember response = http_request({
+            "method": "GET",
+            "url": url,
+            "headers": headers,
+            "timeout": timeout
+        })
+
+        exhale response
+    } catch error {
+        raise "HTTP GET failed for ${url}: ${error}"
+    }
+}
+
+sigh http_post(url, data, headers, timeout) {
+    # Perform HTTP POST request
+    if headers == void {
+        headers = {}
+    }
+
+    if timeout == void {
+        timeout = 30
+    }
+
+    # Set content-type if not specified
+    if not dict_has_key(headers, "Content-Type") {
+        headers["Content-Type"] = "application/json"
+    }
+
+    # Convert data to JSON if it's a dict
+    remember body = data
+    if typeof(data) == "dict" {
+        body = to_json(data)
+    }
+
+    attempt {
+        remember response = http_request({
+            "method": "POST",
+            "url": url,
+            "body": body,
+            "headers": headers,
+            "timeout": timeout
+        })
+
+        exhale response
+    } catch error {
+        raise "HTTP POST failed for ${url}: ${error}"
+    }
+}
+
+sigh http_put(url, data, headers, timeout) {
+    # Perform HTTP PUT request
+    if headers == void {
+        headers = {}
+    }
+
+    if timeout == void {
+        timeout = 30
+    }
+
+    if not dict_has_key(headers, "Content-Type") {
+        headers["Content-Type"] = "application/json"
+    }
+
+    remember body = data
+    if typeof(data) == "dict" {
+        body = to_json(data)
+    }
+
+    attempt {
+        remember response = http_request({
+            "method": "PUT",
+            "url": url,
+            "body": body,
+            "headers": headers,
+            "timeout": timeout
+        })
+
+        exhale response
+    } catch error {
+        raise "HTTP PUT failed for ${url}: ${error}"
+    }
+}
+
+sigh http_delete(url, headers, timeout) {
+    # Perform HTTP DELETE request
+    if headers == void {
+        headers = {}
+    }
+
+    if timeout == void {
+        timeout = 30
+    }
+
+    attempt {
+        remember response = http_request({
+            "method": "DELETE",
+            "url": url,
+            "headers": headers,
+            "timeout": timeout
+        })
+
+        exhale response
+    } catch error {
+        raise "HTTP DELETE failed for ${url}: ${error}"
+    }
+}
+
+sigh http_patch(url, data, headers, timeout) {
+    # Perform HTTP PATCH request
+    if headers == void {
+        headers = {}
+    }
+
+    if timeout == void {
+        timeout = 30
+    }
+
+    if not dict_has_key(headers, "Content-Type") {
+        headers["Content-Type"] = "application/json"
+    }
+
+    remember body = data
+    if typeof(data) == "dict" {
+        body = to_json(data)
+    }
+
+    attempt {
+        remember response = http_request({
+            "method": "PATCH",
+            "url": url,
+            "body": body,
+            "headers": headers,
+            "timeout": timeout
+        })
+
+        exhale response
+    } catch error {
+        raise "HTTP PATCH failed for ${url}: ${error}"
+    }
+}
+
+sigh http_head(url, headers, timeout) {
+    # Perform HTTP HEAD request
+    if headers == void {
+        headers = {}
+    }
+
+    if timeout == void {
+        timeout = 30
+    }
+
+    attempt {
+        remember response = http_request({
+            "method": "HEAD",
+            "url": url,
+            "headers": headers,
+            "timeout": timeout
+        })
+
+        exhale response
+    } catch error {
+        raise "HTTP HEAD failed for ${url}: ${error}"
+    }
+}
+
+# ============================================================================
+# URL OPERATIONS
+# ============================================================================
+
+sigh parse_url(url) {
+    # Parse URL into components
+    # Returns: { scheme, host, port, path, query, fragment }
+
+    remember result = {
+        "scheme": "",
+        "host": "",
+        "port": void,
+        "path": "",
+        "query": {},
+        "fragment": ""
+    }
+
+    remember remaining = url
+
+    # Extract scheme (http://, https://, etc.)
+    remember scheme_end = index_of_str(remaining, "://")
+    if scheme_end >= 0 {
+        result["scheme"] = substring_str(remaining, 0, scheme_end)
+        remaining = substring_str(remaining, scheme_end + 3, string_length(remaining))
+    }
+
+    # Extract fragment (#...)
+    remember fragment_start = index_of_str(remaining, "#")
+    if fragment_start >= 0 {
+        result["fragment"] = substring_str(remaining, fragment_start + 1, string_length(remaining))
+        remaining = substring_str(remaining, 0, fragment_start)
+    }
+
+    # Extract query string (?...)
+    remember query_start = index_of_str(remaining, "?")
+    if query_start >= 0 {
+        remember query_str = substring_str(remaining, query_start + 1, string_length(remaining))
+        result["query"] = parse_query_string(query_str)
+        remaining = substring_str(remaining, 0, query_start)
+    }
+
+    # Extract path (everything after first /)
+    remember path_start = index_of_str(remaining, "/")
+    if path_start >= 0 {
+        result["path"] = substring_str(remaining, path_start, string_length(remaining))
+        remaining = substring_str(remaining, 0, path_start)
+    } else {
+        result["path"] = "/"
+    }
+
+    # Extract port (if present)
+    remember port_start = index_of_str(remaining, ":")
+    if port_start >= 0 {
+        remember port_str = substring_str(remaining, port_start + 1, string_length(remaining))
+        result["port"] = parse_int(port_str)
+        remaining = substring_str(remaining, 0, port_start)
+    }
+
+    # What's left is the host
+    result["host"] = remaining
+
+    exhale result
+}
+
+sigh build_url(components) {
+    # Build URL from components
+    remember url = ""
+
+    # Add scheme
+    if has_key(components, "scheme") and string_length(components["scheme"]) > 0 {
+        url = "${components["scheme"]}://"
+    }
+
+    # Add host
+    if has_key(components, "host") {
+        url = "${url}${components["host"]}"
+    }
+
+    # Add port
+    if has_key(components, "port") and components["port"] != void {
+        url = "${url}:${components["port"]}"
+    }
+
+    # Add path
+    if has_key(components, "path") and string_length(components["path"]) > 0 {
+        url = "${url}${components["path"]}"
+    }
+
+    # Add query
+    if has_key(components, "query") and typeof(components["query"]) == "dict" {
+        remember query_str = build_query_string(components["query"])
+        if string_length(query_str) > 0 {
+            url = "${url}?${query_str}"
+        }
+    }
+
+    # Add fragment
+    if has_key(components, "fragment") and string_length(components["fragment"]) > 0 {
+        url = "${url}#${components["fragment"]}"
+    }
+
+    exhale url
+}
+
+sigh parse_query_string(query) {
+    # Parse query string into dictionary
+    # "key1=value1&key2=value2" -> {"key1": "value1", "key2": "value2"}
+
+    remember result = {}
+
+    if string_length(query) == 0 {
+        exhale result
+    }
+
+    remember pairs = split_str(query, "&")
+
+    for pair in pairs {
+        remember equal_pos = index_of_str(pair, "=")
+
+        if equal_pos >= 0 {
+            remember key = substring_str(pair, 0, equal_pos)
+            remember value = substring_str(pair, equal_pos + 1, string_length(pair))
+
+            # URL decode
+            key = url_decode(key)
+            value = url_decode(value)
+
+            result[key] = value
+        } else {
+            # No value, just key
+            result[url_decode(pair)] = ""
+        }
+    }
+
+    exhale result
+}
+
+sigh build_query_string(params) {
+    # Build query string from dictionary
+    remember pairs = []
+    remember keys = dict_keys(params)
+
+    for key in keys {
+        remember value = params[key]
+        remember encoded_key = url_encode(key)
+        remember encoded_value = url_encode(to_string(value))
+        remember pair = "${encoded_key}=${encoded_value}"
+        pairs = append(pairs, pair)
+    }
+
+    exhale join_str(pairs, "&")
+}
+
+sigh url_encode(text) {
+    # URL encode string (percent encoding)
+    remember result = ""
+    remember i = 0
+    remember len = string_length(text)
+
+    while i < len {
+        remember ch = char_at(text, i)
+        remember code = char_code(ch)
+
+        # Characters that don't need encoding: A-Z, a-z, 0-9, -, _, ., ~
+        if (code >= 65 and code <= 90) or (code >= 97 and code <= 122) or (code >= 48 and code <= 57) or ch == "-" or ch == "_" or ch == "." or ch == "~" {
+            result = "${result}${ch}"
+        } else {
+            # Encode as %XX
+            remember hex = to_hex(code)
+            result = "${result}%${hex}"
+        }
+
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh url_decode(text) {
+    # URL decode string
+    remember result = ""
+    remember i = 0
+    remember len = string_length(text)
+
+    while i < len {
+        remember ch = char_at(text, i)
+
+        if ch == "%" and i + 2 < len {
+            # Decode %XX
+            remember hex = substring_str(text, i + 1, i + 3)
+            remember code = from_hex(hex)
+            result = "${result}${char_from_code(code)}"
+            i = i + 3
+        } else {
+            if ch == "+" {
+                result = "${result} "
+                i = i + 1
+            } else {
+                result = "${result}${ch}"
+                i = i + 1
+            }
+        }
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# JSON OPERATIONS
+# ============================================================================
+
+sigh parse_json(json_str) {
+    # Parse JSON string to Lament data structures
+    attempt {
+        exhale json_parse(json_str)
+    } catch error {
+        raise "JSON parse error: ${error}"
+    }
+}
+
+sigh to_json(data, pretty) {
+    # Convert Lament data to JSON string
+    if pretty == void {
+        pretty = no
+    }
+
+    attempt {
+        if pretty {
+            exhale json_stringify(data, 2)
+        }
+        exhale json_stringify(data)
+    } catch error {
+        raise "JSON stringify error: ${error}"
+    }
+}
+
+# ============================================================================
+# WEBSOCKET CLIENT
+# ============================================================================
+
+sigh WebSocket_connect(url) {
+    # Create WebSocket connection
+    attempt {
+        remember ws = websocket_connect(url)
+
+        remember obj = {
+            "socket": ws,
+            "send": void,
+            "receive": void,
+            "close": void,
+            "is_open": void
+        }
+
+        sigh send_fn(message) {
+            attempt {
+                websocket_send(obj["socket"], message)
+                exhale yes
+            } catch error {
+                raise "WebSocket send error: ${error}"
+            }
+        }
+
+        sigh receive_fn(timeout) {
+            if timeout == void {
+                timeout = 30
+            }
+
+            attempt {
+                exhale websocket_receive(obj["socket"], timeout)
+            } catch error {
+                raise "WebSocket receive error: ${error}"
+            }
+        }
+
+        sigh close_fn() {
+            attempt {
+                websocket_close(obj["socket"])
+                exhale yes
+            } catch error {
+                raise "WebSocket close error: ${error}"
+            }
+        }
+
+        sigh is_open_fn() {
+            attempt {
+                exhale websocket_is_open(obj["socket"])
+            } catch error {
+                exhale no
+            }
+        }
+
+        obj["send"] = send_fn
+        obj["receive"] = receive_fn
+        obj["close"] = close_fn
+        obj["is_open"] = is_open_fn
+
+        exhale obj
+    } catch error {
+        raise "WebSocket connection failed for ${url}: ${error}"
+    }
+}
+
+# ============================================================================
+# TCP SOCKET CLIENT
+# ============================================================================
+
+sigh Socket_connect(host, port) {
+    # Create TCP socket connection
+    attempt {
+        remember sock = socket_connect(host, port)
+
+        remember obj = {
+            "socket": sock,
+            "send": void,
+            "receive": void,
+            "close": void,
+            "is_connected": void
+        }
+
+        sigh send_fn(data) {
+            attempt {
+                socket_send(obj["socket"], data)
+                exhale yes
+            } catch error {
+                raise "Socket send error: ${error}"
+            }
+        }
+
+        sigh receive_fn(buffer_size) {
+            if buffer_size == void {
+                buffer_size = 4096
+            }
+
+            attempt {
+                exhale socket_receive(obj["socket"], buffer_size)
+            } catch error {
+                raise "Socket receive error: ${error}"
+            }
+        }
+
+        sigh close_fn() {
+            attempt {
+                socket_close(obj["socket"])
+                exhale yes
+            } catch error {
+                raise "Socket close error: ${error}"
+            }
+        }
+
+        sigh is_connected_fn() {
+            attempt {
+                exhale socket_is_connected(obj["socket"])
+            } catch error {
+                exhale no
+            }
+        }
+
+        obj["send"] = send_fn
+        obj["receive"] = receive_fn
+        obj["close"] = close_fn
+        obj["is_connected"] = is_connected_fn
+
+        exhale obj
+    } catch error {
+        raise "Socket connection failed for ${host}:${port}: ${error}"
+    }
+}
+
+# ============================================================================
+# UDP SOCKET
+# ============================================================================
+
+sigh UDPSocket_create() {
+    # Create UDP socket
+    attempt {
+        remember sock = udp_socket_create()
+
+        remember obj = {
+            "socket": sock,
+            "send_to": void,
+            "receive_from": void,
+            "close": void
+        }
+
+        sigh send_to_fn(data, host, port) {
+            attempt {
+                udp_socket_send_to(obj["socket"], data, host, port)
+                exhale yes
+            } catch error {
+                raise "UDP send error: ${error}"
+            }
+        }
+
+        sigh receive_from_fn(buffer_size) {
+            if buffer_size == void {
+                buffer_size = 4096
+            }
+
+            attempt {
+                # Returns [data, host, port]
+                exhale udp_socket_receive_from(obj["socket"], buffer_size)
+            } catch error {
+                raise "UDP receive error: ${error}"
+            }
+        }
+
+        sigh close_fn() {
+            attempt {
+                udp_socket_close(obj["socket"])
+                exhale yes
+            } catch error {
+                raise "UDP close error: ${error}"
+            }
+        }
+
+        obj["send_to"] = send_to_fn
+        obj["receive_from"] = receive_from_fn
+        obj["close"] = close_fn
+
+        exhale obj
+    } catch error {
+        raise "UDP socket creation failed: ${error}"
+    }
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh download(url, destination) {
+    # Download file from URL to destination
+    attempt {
+        remember response = http_get(url, void, 60)
+
+        if response["status"] != 200 {
+            raise "HTTP ${response["status"]}: ${response["reason"]}"
+        }
+
+        # Write response body to file
+        import { write_file } from "files.lament"
+        write_file(destination, response["body"])
+
+        exhale yes
+    } catch error {
+        raise "Download failed for ${url}: ${error}"
+    }
+}
+
+sigh upload(url, file_path, field_name) {
+    # Upload file to URL (multipart/form-data)
+    if field_name == void {
+        field_name = "file"
+    }
+
+    attempt {
+        import { read_file, basename } from "files.lament"
+
+        remember content = read_file(file_path)
+        remember filename = basename(file_path)
+
+        # Create multipart form data
+        remember boundary = "----LamentFormBoundary${get_timestamp()}"
+        remember body = "--${boundary}\r\n"
+        body = "${body}Content-Disposition: form-data; name=\"${field_name}\"; filename=\"${filename}\"\r\n"
+        body = "${body}Content-Type: application/octet-stream\r\n\r\n"
+        body = "${body}${content}\r\n"
+        body = "${body}--${boundary}--\r\n"
+
+        remember headers = {
+            "Content-Type": "multipart/form-data; boundary=${boundary}"
+        }
+
+        remember response = http_post(url, body, headers, 60)
+
+        exhale response
+    } catch error {
+        raise "Upload failed for ${file_path}: ${error}"
+    }
+}
+
+sigh is_url(text) {
+    # Check if text looks like a URL
+    remember lower = lower_str(text)
+    if startswith_str(lower, "http://") or startswith_str(lower, "https://") {
+        exhale yes
+    }
+    if startswith_str(lower, "ws://") or startswith_str(lower, "wss://") {
+        exhale yes
+    }
+    if startswith_str(lower, "ftp://") or startswith_str(lower, "ftps://") {
+        exhale yes
+    }
+    exhale no
+}
+
+# ============================================================================
+# HELPER FUNCTIONS (String operations)
+# ============================================================================
+
+sigh split_str(text, delimiter) {
+    import { split } from "strings.lament"
+    exhale split(text, delimiter)
+}
+
+sigh join_str(list, separator) {
+    import { join } from "strings.lament"
+    exhale join(list, separator)
+}
+
+sigh index_of_str(text, substring) {
+    import { index_of } from "strings.lament"
+    exhale index_of(text, substring)
+}
+
+sigh substring_str(text, start, end) {
+    exhale substring(text, start, end)
+}
+
+sigh startswith_str(text, prefix) {
+    import { startswith } from "strings.lament"
+    exhale startswith(text, prefix)
+}
+
+sigh lower_str(text) {
+    import { lower } from "strings.lament"
+    exhale lower(text)
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    http_get, http_post, http_put, http_delete, http_patch, http_head,
+    parse_url, build_url, parse_query_string, build_query_string,
+    url_encode, url_decode,
+    parse_json, to_json,
+    WebSocket_connect,
+    Socket_connect,
+    UDPSocket_create,
+    download, upload, is_url
+}
