@@ -510,6 +510,32 @@ def cmd_neural(args):
         return 1
 
 
+def cmd_therapy(args):
+    """Conduct code therapy session"""
+    file_path = args.file
+
+    if not os.path.exists(file_path):
+        print_error(f"File not found: {file_path}")
+        return 1
+
+    print_header("CODE THERAPY SESSION")
+    print(colorize("Welcome. I'm here to listen.", Colors.MAGENTA, Colors.ITALIC))
+    print(colorize("Let's talk about how your code is feeling...", Colors.MAGENTA, Colors.ITALIC))
+    print()
+
+    try:
+        # Import empathy module
+        from lament.empathy import cmd_therapy as run_therapy
+        return run_therapy(file_path)
+
+    except Exception as e:
+        print_error(f"Therapy session error: {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        return 1
+
+
 def cmd_version(args):
     """Show version information"""
     print()
@@ -574,6 +600,11 @@ def create_parser():
     neural_parser.add_argument('file', help='Lament training script (.lament)')
     neural_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
 
+    # Therapy command
+    therapy_parser = subparsers.add_parser('therapy', help='Code therapy session')
+    therapy_parser.add_argument('file', help='Lament source file (.lament)')
+    therapy_parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
+
     return parser
 
 
@@ -599,6 +630,7 @@ def main():
         'analyze': cmd_analyze,
         'repl': cmd_repl,
         'neural': cmd_neural,
+        'therapy': cmd_therapy,
     }
 
     handler = command_handlers.get(args.command)

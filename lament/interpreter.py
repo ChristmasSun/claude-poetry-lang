@@ -104,6 +104,7 @@ class LamentInterpreter:
         - Type checking: is_numb(), is_whisper(), is_void()
         - typeof(): Get emotional type name
         - current_timeline(): Get current timeline identifier
+        - System functions: File I/O, testing, async/await (from lament.system)
         """
         self.globals['range'] = lambda *args: list(range(*args))
         self.globals['length_of'] = lambda x: len(x)
@@ -118,6 +119,14 @@ class LamentInterpreter:
         self.globals['is_void'] = lambda x: x is None
         self.globals['typeof'] = lambda x: self.type_of(x)
         self.globals['current_timeline'] = lambda: self.current_timeline
+
+        # Register system functions (File I/O, Testing, Async)
+        try:
+            from lament.system import register_system_builtins
+            register_system_builtins(self)
+        except ImportError:
+            # System module not available, skip
+            pass
 
     def type_of(self, value):
         """Get emotional type name for a value.

@@ -1,0 +1,29 @@
+// Demo: Empathetic Error Messages
+// This file demonstrates the groundbreaking empathetic error system
+// Run with: lament run demo_empathy_errors.lament
+//
+// The system will:
+// - Detect repeated errors and offer explanations
+// - Track your coding session for fatigue
+// - Suggest specific fixes automatically
+// - Use compassionate language
+// - Learn your patterns over time
+
+// Scenario 1: Undefined Variable (Common typo)
+// This will trigger empathetic suggestions including similar variable names
+remember user_name = "Alice"
+confess usrname  // Typo! System will suggest "Did you mean 'user_name'?"
+
+// Scenario 2: Undefined Function
+// System explains what 'sigh' means and how to define functions
+calculate_score(10, 20)  // Function not defined yet
+
+// Scenario 3: Division by Zero
+// Poetic error message + suggestion for guard clause
+remember divisor = 0
+remember result = 100 / divisor  // Will suggest: "Add a check: if divisor != 0 { ... }"
+
+// Scenario 4: Type Error
+// Compassionate explanation of type compatibility
+remember age = 25
+remember message = "Age is: " + age  // Can't add string to number

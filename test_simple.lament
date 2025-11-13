@@ -1,0 +1,23 @@
+# Simple test for template strings with exception handling
+
+sigh safe_divide(num, denom) {
+    attempt {
+        if denom == 0 {
+            raise "Cannot divide by zero"
+        }
+        remember result = num / denom
+        remember msg = "${num} / ${denom} = ${result}"
+        exhale msg
+    } catch err {
+        remember error_msg = "Error: Division failed"
+        exhale error_msg
+    }
+}
+
+confess "Test 1:"
+confess safe_divide(100, 5)
+
+confess "Test 2:"
+confess safe_divide(100, 0)
+
+confess "Done!"

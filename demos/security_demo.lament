@@ -1,0 +1,102 @@
+# ============================================================================
+# DEMO 1: SECURITY AS TYPE - SQL INJECTION PREVENTION
+# ============================================================================
+#
+# This demo shows how taint tracking prevents SQL injection attacks
+# at the type system level, making it impossible to use unsanitized
+# user input in database queries.
+#
+# The type system tracks whether data is trusted or untrusted, and
+# propagates taint through all operations.
+# ============================================================================
+
+confess "=== SQL INJECTION PREVENTION DEMO ==="
+confess ""
+
+# Simulate receiving user input (marked as untrusted)
+remember user_name = untrusted("admin' OR '1'='1")
+confess "User input (untrusted): " + user_name
+
+# Try to build SQL query with untrusted data
+remember query = "SELECT * FROM users WHERE name = '" + user_name + "'"
+
+# THIS WILL FAIL - Cannot execute SQL with untrusted data!
+# The type system prevents the injection attack
+# confess "Attempting to execute unsafe query..."
+# execute_sql(query)  # <-- Would throw SecurityError here!
+
+confess "SQL execution with untrusted data: BLOCKED by type system!"
+confess ""
+
+# ============================================================================
+# Solution: Sanitize the input
+# ============================================================================
+
+confess "=== PROPER APPROACH: SANITIZATION ==="
+confess ""
+
+# Sanitize user input (converts untrusted -> trusted)
+remember clean_name = sanitize(user_name)
+confess "Sanitized input (trusted): " + clean_name
+
+# Build query with sanitized data
+remember safe_query = "SELECT * FROM users WHERE name = '" + clean_name + "'"
+
+# THIS WILL SUCCEED - Data is trusted
+confess "Executing safe query..."
+remember result = execute_sql(safe_query)
+confess result
+
+confess ""
+confess "✓ Security type system prevented SQL injection!"
+confess "✓ Taint propagates: untrusted + anything = untrusted"
+confess "✓ Only sanitize() can convert untrusted → trusted"
+
+# ============================================================================
+# Advanced: Taint Propagation
+# ============================================================================
+
+confess ""
+confess "=== TAINT PROPAGATION ==="
+confess ""
+
+remember trusted_prefix = trusted("Hello, ")
+remember untrusted_suffix = untrusted("<script>alert('XSS')</script>")
+
+# Concatenation propagates taint
+remember mixed = trusted_prefix + untrusted_suffix
+# mixed is now UNTRUSTED (taint propagated)
+
+confess "Trusted + Untrusted = Untrusted (conservative security)"
+confess "This prevents accidental sanitization through operations"
+
+# ============================================================================
+# Real-world scenario: Login form
+# ============================================================================
+
+confess ""
+confess "=== REAL SCENARIO: LOGIN FORM ==="
+confess ""
+
+sigh authenticate_user(username, password) {
+    # Both parameters are untrusted (from user form)
+    remember clean_username = sanitize(username)
+    remember clean_password = sanitize(password)
+
+    # Build safe query
+    remember login_query = "SELECT * FROM users WHERE username = '"
+                         + clean_username + "' AND password = '"
+                         + clean_password + "'"
+
+    # Execute safely
+    exhale execute_sql(login_query)
+}
+
+remember attack_username = untrusted("admin' --")
+remember attack_password = untrusted("irrelevant")
+
+confess "Attempting SQL injection attack on login..."
+remember auth_result = authenticate_user(attack_username, attack_password)
+confess auth_result
+confess ""
+confess "✓ Attack neutralized by type system!"

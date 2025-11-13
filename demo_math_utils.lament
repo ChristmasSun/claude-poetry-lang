@@ -1,0 +1,39 @@
+# ============================================================================
+# Math Utilities Module for Lament
+# ============================================================================
+# This module demonstrates the MODULE SYSTEM feature
+# It provides mathematical utility functions that can be imported
+
+# Define utility functions
+sigh square(x) {
+    exhale x * x
+}
+
+sigh cube(x) {
+    exhale x * x * x
+}
+
+sigh factorial(n) {
+    if n <= 1 {
+        exhale 1
+    }
+    exhale n * factorial(n - 1)
+}
+
+sigh is_even(n) {
+    exhale n % 2 == 0
+}
+
+sigh max_of(a, b) {
+    if a > b {
+        exhale a
+    }
+    exhale b
+}
+
+# Some constants
+remember PI = 3.14159
+remember E = 2.71828
+
+# Export public interface
+expose { square, cube, factorial, is_even, max_of, PI, E }

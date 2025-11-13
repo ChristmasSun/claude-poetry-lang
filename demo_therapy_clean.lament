@@ -1,0 +1,70 @@
+sigh calculate_tax(income) {
+    remember tax_rate = 0.3
+    exhale income * tax_rate
+}
+
+sigh format_currency(amount) {
+    exhale "$" + amount
+}
+
+sigh process_user_input(input) {
+    if input != void {
+        if is_whisper(input) {
+            if length_of(input) > 0 {
+                if length_of(input) < 100 {
+                    if input != "" {
+                        confess "Valid input"
+                    }
+                }
+            }
+        }
+    }
+}
+
+sigh handle_everything(data, mode, flags, options) {
+    if mode == "process" {
+        if flags > 0 {
+            remember result = data * 2
+            if options != void {
+                if options == "double" {
+                    result = result * 2
+                }
+                if options == "triple" {
+                    result = result * 3
+                }
+            }
+            confess result
+        } else {
+            if flags == 0 {
+                remember alt = data + 10
+                if alt > 50 {
+                    confess "High"
+                } else {
+                    confess "Low"
+                }
+            }
+        }
+    }
+}
+
+sigh deep_nesting(x) {
+    if x > 0 {
+        if x < 100 {
+            if x % 2 == 0 {
+                if x > 50 {
+                    if x < 75 {
+                        confess "Very specific number"
+                    }
+                }
+            }
+        }
+    }
+}
+
+sigh greet(name) {
+    confess "Hello, " + name
+}
+
+greet("World")
+process_user_input("test")
+handle_everything(10, "process", 1, "double")

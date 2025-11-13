@@ -1,0 +1,239 @@
+# Lament Language - Temporal Advanced Features Example
+# =====================================================
+# This demonstrates how CAUSAL DEBUGGING and TEMPORAL CONTRACTS
+# could be used in actual Lament code (conceptual syntax).
+
+# ============================================================================
+# CAUSAL DEBUGGING EXAMPLES
+# ============================================================================
+
+confess "=== CAUSAL DEBUGGING ==="
+
+# Simple causality
+remember x = 10
+x = x + 5
+x = x * 2
+
+# In the future, we could query: why(x)
+# Output would show:
+#   x = 30 because:
+#     - x = x * 2 (line 14) where x@past = 15
+#     - x = x + 5 (line 13) where x@past = 10
+#     - x = 10 (line 12) [initial]
+
+confess x
+
+# Complex causal chain
+remember price = 100
+remember quantity = 5
+remember subtotal = price * quantity
+remember tax = subtotal * 0.1
+remember total = subtotal + tax
+
+# Query: why(total)
+# Would show complete dependency graph:
+#   total = 550 because:
+#     - total = subtotal + tax (line 31)
+#     - subtotal came from price * quantity = 500
+#       - price = 100 (line 24)
+#       - quantity = 5 (line 25)
+#     - tax came from subtotal * 0.1 = 50
+#       - subtotal = 500
+#       - rate = 0.1
+
+confess total
+
+# ============================================================================
+# TEMPORAL CONTRACTS EXAMPLES
+# ============================================================================
+
+confess "=== TEMPORAL CONTRACTS ==="
+
+# INVARIANT: Condition that must ALWAYS be true
+# ----------------------------------------------
+remember balance = 1000
+
+# Conceptual syntax: invariant balance >= 0
+# This would check on every assignment to balance
+
+balance = balance - 500  # OK, still 500
+confess balance
+
+# balance = balance - 600  # Would VIOLATE: "balance >= 0"
+# Beautiful error:
+#   💔 TEMPORAL CONTRACT VIOLATED 💔
+#   Contract Type: Invariant
+#   Condition: balance >= 0
+#
+#   The universe promised this would always be true,
+#   but time has betrayed us. The invariant shattered.
+#
+#   Context:
+#     violated_by: balance
+#     balance: -100
+
+# ENSURES: Post-condition for functions
+# --------------------------------------
+sigh calculate_area(length, width) {
+    remember result = length * width
+
+    # Conceptual syntax: ensures result > 0
+    # Checked when function returns
+
+    exhale result
+}
+
+remember area = calculate_area(10, 5)
+confess area
+
+# If the function returned 0 or negative, the ensures would fail:
+#   💔 TEMPORAL CONTRACT VIOLATED 💔
+#   Contract Type: Ensures
+#   Condition: result > 0
+#
+#   The function promised to ensure this condition,
+#   but it returned without keeping its word.
+
+# EVENTUALLY: Condition must become true within N steps
+# ------------------------------------------------------
+remember temperature = 100
+remember target_reached = no
+
+# Conceptual syntax: eventually(10) temperature <= 20
+# This means: temperature must reach 20 or below within 10 steps
+
+remember i = 0
+while i < 15 {
+    temperature = temperature - 10
+
+    if temperature <= 20 {
+        target_reached = yes
+        confess "Target temperature reached!"
+    }
+
+    confess temperature
+    i = i + 1
+}
+
+# If temperature didn't reach 20 within 10 steps:
+#   💔 TEMPORAL CONTRACT VIOLATED 💔
+#   Contract Type: Eventually
+#   Condition: temperature <= 20
+#
+#   We waited for 10 steps,
+#   but the future never arrived. Time ran out.
+#
+#   Recent History:
+#     1. Step 1: no
+#     2. Step 2: no
+#     ...
+#     10. Step 10: no
+
+# ============================================================================
+# ADVANCED: Combining Causality with Contracts
+# ============================================================================
+
+confess "=== CAUSALITY + CONTRACTS ==="
+
+remember velocity = 0
+# Conceptual: invariant velocity <= 100  # Speed limit
+
+remember iteration = 0
+while iteration < 10 {
+    velocity = velocity + 15
+    confess velocity
+    iteration = iteration + 1
+
+    # At some point, velocity > 100, triggering invariant violation
+    # Then we could use: why(velocity) to trace HOW it happened
+}
+
+# Combined output would show:
+#   💔 TEMPORAL CONTRACT VIOLATED 💔
+#   Invariant: velocity <= 100
+#   Current value: 105
+#
+#   🔍 CAUSAL TRACE:
+#   velocity = 105 because:
+#     - velocity = velocity + 15 [iteration 7]
+#       - velocity@past = 90
+#       - acceleration = 15
+#     Historical assignments:
+#       7. velocity = 0 + 15 → 15
+#       6. velocity = 15 + 15 → 30
+#       5. velocity = 30 + 15 → 45
+#       ...
+
+# ============================================================================
+# PRACTICAL EXAMPLE: Bank Account with Full Protection
+# ============================================================================
+
+confess "=== BANK ACCOUNT EXAMPLE ==="
+
+remember account_balance = 1000
+# Conceptual contracts:
+# invariant account_balance >= 0
+# invariant account_balance <= 1000000
+
+sigh deposit(amount) {
+    # Conceptual: ensures account_balance == account_balance@past + amount
+    account_balance = account_balance + amount
+    confess "Deposited. New balance:"
+    confess account_balance
+    exhale account_balance
+}
+
+sigh withdraw(amount) {
+    # Conceptual: ensures account_balance == account_balance@past - amount
+    account_balance = account_balance - amount
+    confess "Withdrawn. New balance:"
+    confess account_balance
+    exhale account_balance
+}
+
+# Valid operations
+deposit(500)   # Balance: 1500 ✓
+withdraw(300)  # Balance: 1200 ✓
+
+# This would trigger invariant violation:
+# withdraw(1500)  # Balance: -300 ✗
+#   💔 INVARIANT VIOLATED: account_balance >= 0
+#
+#   🔍 WHY is account_balance = -300?
+#   - withdraw(1500) on line 187
+#   - account_balance@past = 1200
+#   - amount = 1500
+#   - Operation: subtraction
+#   - Result: 1200 - 1500 = -300
+
+# ============================================================================
+# QUANTUM EXAMPLE: Eventually with Uncertainty
+# ============================================================================
+
+confess "=== QUANTUM CONVERGENCE ==="
+
+remember quantum_state = perhaps
+remember observations = 0
+remember collapsed = no
+
+# Conceptual: eventually(5) collapsed == yes
+# The quantum state must collapse within 5 observations
+
+while observations < 10 {
+    if quantum_state == yes {
+        collapsed = yes
+        confess "Quantum state collapsed to YES!"
+    }
+
+    if quantum_state == no {
+        collapsed = yes
+        confess "Quantum state collapsed to NO!"
+    }
+
+    observations = observations + 1
+}
+
+# If it never collapses within 5 steps, eventually contract fails
+# Beautiful error shows the probability tree across time
+
+confess "Demo complete!"

@@ -1,0 +1,150 @@
+# ============================================================================
+# DEMO 2: PERSISTENT MEMORY
+# ============================================================================
+#
+# This demo shows variables that survive program restarts.
+# Persistent variables are stored in .lament.memory file and
+# automatically loaded on startup.
+#
+# Supports transactional semantics: commit or rollback changes.
+# ============================================================================
+
+confess "=== PERSISTENT MEMORY DEMO ==="
+confess ""
+
+# ============================================================================
+# Persistent Variables
+# ============================================================================
+
+# Declare a persistent variable (survives program restart)
+persistent remember visit_count = 0
+
+# Increment counter
+visit_count = visit_count + 1
+
+confess "Welcome! Visit count: " + visit_count
+confess "(This counter persists across program runs!)"
+confess ""
+
+# ============================================================================
+# Persistent Application State
+# ============================================================================
+
+confess "=== APPLICATION STATE ==="
+confess ""
+
+# High score that persists
+persistent remember high_score = 0
+
+# Simulate game score
+remember current_score = 1250
+
+if current_score > high_score {
+    confess "New high score!"
+    high_score = current_score
+    confess "High score saved: " + high_score
+} else {
+    confess "Current score: " + current_score
+    confess "High score: " + high_score
+}
+
+# ============================================================================
+# User Preferences
+# ============================================================================
+
+confess ""
+confess "=== USER PREFERENCES ==="
+confess ""
+
+# Persistent preferences
+persistent remember theme = "dark"
+persistent remember notifications_enabled = yes
+persistent remember language = "lament"
+
+confess "Theme: " + theme
+confess "Notifications: " + notifications_enabled
+confess "Language: " + language
+
+# Change preference
+theme = "light"
+confess "Theme changed to: " + theme
+confess "(Will persist to next run!)"
+
+# ============================================================================
+# Transactions: All or Nothing
+# ============================================================================
+
+confess ""
+confess "=== TRANSACTIONS ==="
+confess ""
+
+# Persistent bank accounts
+persistent remember account_a = 1000
+persistent remember account_b = 500
+
+confess "Initial balances:"
+confess "  Account A: $" + account_a
+confess "  Account B: $" + account_b
+
+# Transfer money with transaction safety
+remember transfer_amount = 200
+
+transaction {
+    # Check sufficient funds
+    if account_a >= transfer_amount {
+        account_a = account_a - transfer_amount
+        account_b = account_b + transfer_amount
+        confess "Transfer successful!"
+    } else {
+        confess "Insufficient funds - transaction will rollback"
+    }
+} commit_or_rollback
+
+confess "Final balances:"
+confess "  Account A: $" + account_a
+confess "  Account B: $" + account_b
+confess ""
+confess "✓ Transaction guarantees: all changes commit or all rollback!"
+
+# ============================================================================
+# Session Management
+# ============================================================================
+
+confess ""
+confess "=== SESSION TRACKING ==="
+confess ""
+
+persistent remember last_login = now()
+persistent remember total_sessions = 0
+
+total_sessions = total_sessions + 1
+
+confess "Last login: " + last_login
+confess "Total sessions: " + total_sessions
+
+# Update last login for next time
+last_login = now()
+
+# ============================================================================
+# Persistent Data Structures
+# ============================================================================
+
+confess ""
+confess "=== PERSISTENT COLLECTIONS ==="
+confess ""
+
+# Persistent list (todo items that survive restarts)
+persistent remember todo_items = ["Learn Lament", "Build something cool"]
+
+confess "Todo list:"
+for item in todo_items {
+    confess "  - " + item
+}
+
+# Add new item (will persist)
+# todo_items = todo_items + ["Master revolutionary features"]
+
+confess ""
+confess "✓ All data persists to .lament.memory file"
+confess "✓ Automatically loaded on program start"
+confess "✓ Transactional semantics for consistency"

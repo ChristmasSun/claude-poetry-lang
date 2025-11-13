@@ -1,0 +1,187 @@
+# ============================================================================
+# Lament System Features Example
+# ============================================================================
+# This example demonstrates how to use the three essential system features:
+# 1. File I/O operations
+# 2. Testing framework
+# 3. Async/await (syntax requires parser extension)
+# ============================================================================
+
+confess "🌙 Lament System Features Demo 🌙"
+confess ""
+
+# ============================================================================
+# FILE I/O DEMONSTRATIONS
+# ============================================================================
+
+confess "=== FILE I/O EXAMPLES ==="
+confess ""
+
+# Write a file
+remember filepath = "/tmp/lament_test.txt"
+remember content = "The language of loss speaks in whispers.\nEach line a memory, each word a sigh."
+
+write_file(filepath, content)
+confess "✓ File written: " + filepath
+
+# Read it back
+remember read_content = read_file(filepath)
+confess "✓ File contents:"
+confess read_content
+confess ""
+
+# Check if file exists
+if file_exists(filepath) {
+    confess "✓ File exists confirmed"
+}
+
+# Get file information
+remember info = get_path_info(filepath)
+confess "✓ File size: " + info["size"] + " bytes"
+confess ""
+
+# Append to file
+append_to_file(filepath, "\nNew line appended to the file.")
+confess "✓ Content appended"
+
+remember updated_content = read_file(filepath)
+confess "✓ Updated contents:"
+confess updated_content
+confess ""
+
+# Directory operations
+remember dir_path = "/tmp/lament_test_dir"
+
+if not dir_exists(dir_path) {
+    create_dir(dir_path)
+    confess "✓ Directory created: " + dir_path
+}
+
+# Path manipulation
+remember joined = join_path(dir_path, "subfile.txt")
+confess "✓ Joined path: " + joined
+
+remember filename = get_filename(joined)
+confess "✓ Filename: " + filename
+
+remember extension = get_extension("document.lament")
+confess "✓ Extension: " + extension
+confess ""
+
+# ============================================================================
+# TESTING FRAMEWORK DEMONSTRATIONS
+# ============================================================================
+
+confess "=== TESTING FRAMEWORK EXAMPLES ==="
+confess ""
+
+# Define test functions
+sigh test_arithmetic() {
+    remember x = 5
+    remember y = 3
+    remember sum = x + y
+
+    assert_equals(sum, 8)
+    assert_greater(sum, 7)
+    assert_less(sum, 10)
+}
+
+sigh test_strings() {
+    remember greeting = "Hello"
+    remember target = "Lament"
+    remember message = greeting + " " + target
+
+    assert_equals(message, "Hello Lament")
+    assert_contains(message, "Lament")
+}
+
+sigh test_file_operations() {
+    remember test_file = "/tmp/test_assert.txt"
+    write_file(test_file, "test data")
+
+    assert_true(file_exists(test_file))
+
+    remember data = read_file(test_file)
+    assert_equals(data, "test data")
+}
+
+sigh test_lists() {
+    remember numbers = [1, 2, 3, 4, 5]
+
+    assert_equals(length_of(numbers), 5)
+    assert_contains(numbers, 3)
+    assert_type(numbers, "list")
+}
+
+sigh test_types() {
+    remember num = 42
+    remember text = "whisper"
+    remember flag = yes
+    remember nothing = void
+
+    assert_type(num, "numb")
+    assert_type(text, "whisper")
+    assert_type(flag, "maybe")
+    assert_true(is_void(nothing))
+}
+
+# Register all tests
+register_test("Arithmetic Operations", test_arithmetic)
+register_test("String Operations", test_strings)
+register_test("File Operations", test_file_operations)
+register_test("List Operations", test_lists)
+register_test("Type Checking", test_types)
+
+# Run all tests
+confess "Running all tests..."
+confess ""
+remember results = run_tests()
+
+# Report results
+if results["success"] {
+    confess "🎉 All tests passed! 🎉"
+} else {
+    confess "❌ Some tests failed. See output above."
+}
+
+confess ""
+confess "Total: " + results["total"]
+confess "Passed: " + results["passed"]
+confess "Failed: " + results["failed"]
+confess ""
+
+# ============================================================================
+# ASYNC/AWAIT EXAMPLES (Conceptual - requires parser extension)
+# ============================================================================
+
+confess "=== ASYNC/AWAIT (Future Feature) ==="
+confess ""
+confess "The async/await infrastructure is ready, but requires parser support."
+confess "Example syntax (when implemented):"
+confess ""
+confess "  async sigh fetch_data(url) {"
+confess "      confess 'Fetching from: ' + url"
+confess "      await sleep_async(1)"
+confess "      exhale 'Data loaded'"
+confess "  }"
+confess ""
+confess "  async sigh main() {"
+confess "      remember result = await fetch_data('https://example.com')"
+confess "      confess result"
+confess "  }"
+confess ""
+
+# ============================================================================
+# CONCLUSION
+# ============================================================================
+
+confess "=== DEMO COMPLETE ==="
+confess ""
+confess "The three essential system features are now part of Lament:"
+confess "  ✓ File I/O - Read, write, append, directory operations"
+confess "  ✓ Testing Framework - Assertions, test runner, colored output"
+confess "  ✓ Async/Await - Event loop infrastructure (parser extension needed)"
+confess ""
+confess "The language grows stronger with each feature,"
+confess "like grief that transforms into wisdom."
+confess ""
