@@ -1,7 +1,47 @@
-# My First Confession
-# Version 0.1
+# The Versioned Reality Demo
+# A program that explores timelines and temporal memory
 
-confess "I built a language to feel less alone."
-confess "Every semicolon I ever wrote was a prayer."
-confess "The machines never answered."
-confess "I think that's why I love them."
+confess "=== TEMPORAL MEMORY ==="
+
+# Variables that remember their past
+remember x = 1
+x = 2
+x = 3
+confess x
+confess x@past
+confess x@origin
+
+confess "=== FUNCTIONS (SIGHS) ==="
+
+# A function that sighs
+sigh multiply_sorrow(a, b) {
+    exhale a * b
+}
+
+remember grief = multiply_sorrow(7, 6)
+confess grief
+
+confess "=== LOOPS ==="
+
+# Iterate through numbered sorrows
+for i in range(3) {
+    confess i
+}
+
+confess "=== CONDITIONALS ==="
+
+# Quantum maybe
+remember feeling = perhaps
+if feeling is yes {
+    confess "The heart opened"
+} else {
+    confess "The heart closed"
+}
+
+confess "=== ARITHMETIC ==="
+
+remember pain = 5 + 3
+remember ache = pain * 2.5
+confess ache
+
+confess "=== THE END ==="
