@@ -1,0 +1,162 @@
+# Comprehensive example showing all emotional states
+
+# ============================================================
+# LONELY CODE - Functions and variables that are never used
+# ============================================================
+
+sigh forgotten_function() {
+    confess "Nobody will ever call me"
+    exhale void
+}
+
+remember abandoned_variable = 42
+remember another_orphan = "lost"
+
+# ============================================================
+# SAD CODE - Overly complex and deeply nested
+# ============================================================
+
+sigh deeply_nested_nightmare(a, b, c, d, e, f, g, h) {
+    if a > 0 {
+        if b > 0 {
+            if c > 0 {
+                if d > 0 {
+                    if e > 0 {
+                        if f > 0 {
+                            if g > 0 {
+                                if h > 0 {
+                                    confess "Finally reached the center of the maze!"
+                                    exhale a + b + c + d + e + f + g + h
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    exhale 0
+}
+
+# ============================================================
+# ANXIOUS CODE - Paranoid checking and reality forking
+# ============================================================
+
+sigh paranoid_validator(input_value) {
+    if input_value is void {
+        exhale no
+    }
+
+    if input_value < 0 {
+        exhale no
+    }
+
+    if input_value > 1000 {
+        exhale no
+    }
+
+    if input_value == 13 {
+        exhale no
+    }
+
+    if input_value == 666 {
+        exhale no
+    }
+
+    if input_value % 2 == 0 {
+        if input_value % 4 == 0 {
+            if input_value % 8 == 0 {
+                exhale yes
+            }
+        }
+    }
+
+    exhale perhaps
+}
+
+# Quantum anxiety - too many reality forks
+fork reality {
+    on yes {
+        remember outcome1 = 1
+    }
+    on no {
+        remember outcome1 = 2
+    }
+} collapse observe outcome1
+
+fork reality {
+    on yes {
+        remember outcome2 = 10
+    }
+    on perhaps {
+        remember outcome2 = 20
+    }
+} collapse observe outcome2
+
+fork reality {
+    on yes {
+        remember outcome3 = 100
+    }
+    on no {
+        remember outcome3 = 200
+    }
+} collapse observe outcome3
+
+# ============================================================
+# CHAOTIC CODE - Inconsistent naming and organization
+# ============================================================
+
+remember x = 1
+remember y = 2
+remember thisIsCamelCase = 3
+remember this_is_snake = 4
+remember MixOf_BOTH = 5
+remember a = 6
+remember b = 7
+
+# ============================================================
+# HOPEFUL CODE - Clean, well-structured, actually used
+# ============================================================
+
+sigh calculate_fibonacci(count) {
+    remember sequence = [0, 1]
+    remember current_index = 2
+
+    while current_index < count {
+        remember prev_one = sequence[current_index - 1]
+        remember prev_two = sequence[current_index - 2]
+        remember next_num = prev_one + prev_two
+        current_index = current_index + 1
+    }
+
+    exhale sequence
+}
+
+sigh is_even_number(number) {
+    exhale number % 2 == 0
+}
+
+sigh print_greeting(person_name) {
+    confess "Hello, "
+    confess person_name
+}
+
+# ============================================================
+# ACTUAL USAGE - Using the good functions
+# ============================================================
+
+confess "Computing Fibonacci sequence..."
+remember fib_result = calculate_fibonacci(10)
+
+confess "Testing even number checker..."
+remember check_even = is_even_number(42)
+confess check_even
+
+remember check_odd = is_even_number(17)
+confess check_odd
+
+print_greeting("World")
+
+# Using the complex function too
+remember complex_result = deeply_nested_nightmare(1, 2, 3, 4, 5, 6, 7, 8)
+confess complex_result

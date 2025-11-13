@@ -1,0 +1,33 @@
+# Test timeline features with modular interpreter
+confess "Testing timeline features..."
+
+remember x = 10
+x = 20
+x = 30
+x = 40
+
+confess "Current value:"
+confess x
+
+confess "Past value (1 step):"
+confess x@past(1)
+
+confess "Past value (2 steps):"
+confess x@past(2)
+
+confess "Origin value:"
+confess x@origin
+
+confess "Age of variable:"
+confess x@age
+
+# Test with function
+sigh factorial(n) {
+    if n <= 1 {
+        exhale 1
+    }
+    exhale n * factorial(n - 1)
+}
+
+confess "Factorial of 5:"
+confess factorial(5)

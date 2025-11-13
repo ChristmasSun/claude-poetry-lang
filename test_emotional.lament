@@ -1,0 +1,113 @@
+# Test file with mixed emotional states
+# This will trigger various emotional responses from the analyzer
+
+# LONELY CODE - never used
+sigh lonely_function(x, y) {
+    remember result = x + y
+    exhale result
+}
+
+# ANOTHER LONELY FUNCTION
+sigh another_unused() {
+    confess "I am never called"
+}
+
+# ANXIOUS CODE - too many checks
+sigh paranoid_checker(value) {
+    if value > 0 {
+        if value < 100 {
+            if value != 50 {
+                if value != 25 {
+                    if value != 75 {
+                        confess "Finally, a safe value!"
+                    }
+                }
+            }
+        }
+    }
+    exhale value
+}
+
+# SAD CODE - overly complex
+sigh complex_mess(a, b, c, d, e) {
+    remember x = a
+    remember y = b
+    remember z = c
+    remember w = d
+    remember v = e
+
+    if x > 0 {
+        if y > 0 {
+            if z > 0 {
+                if w > 0 {
+                    if v > 0 {
+                        remember temp1 = x + y
+                        remember temp2 = z + w
+                        remember temp3 = temp1 + temp2
+                        remember temp4 = temp3 + v
+                        remember temp5 = temp4 * 2
+                        remember temp6 = temp5 - 1
+                        remember temp7 = temp6 / 2
+                        exhale temp7
+                    }
+                }
+            }
+        }
+    }
+    exhale 0
+}
+
+# CHAOTIC CODE - inconsistent naming
+remember shortName = 5
+remember a = 10
+remember thisIsVeryLongCamelCase = 20
+remember another_snake_case = 30
+remember Mix_Of_Both = 40
+
+# MORE CHAOS
+remember x = 1
+remember y = 2
+remember z = 3
+
+# HOPEFUL CODE - clean and well-structured
+sigh calculate_sum(numbers) {
+    remember total = 0
+    for num in numbers {
+        total = total + num
+    }
+    exhale total
+}
+
+# ACTUALLY USING SOME FUNCTIONS
+confess "Testing the code..."
+remember my_numbers = [1, 2, 3, 4, 5]
+remember sum_result = calculate_sum(my_numbers)
+confess sum_result
+
+remember checked_value = paranoid_checker(42)
+confess checked_value
+
+remember messy_result = complex_mess(1, 2, 3, 4, 5)
+confess messy_result
+
+# MORE ANXIETY - quantum paranoia
+fork reality {
+    on yes {
+        remember result = 1
+    }
+    on no {
+        remember result = 2
+    }
+    on perhaps {
+        remember result = 3
+    }
+} collapse observe result
+
+fork reality {
+    on yes {
+        remember other = 10
+    }
+    on no {
+        remember other = 20
+    }
+} collapse observe other

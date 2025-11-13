@@ -1,0 +1,60 @@
+# Comprehensive test of modular Lament interpreter
+confess "=== Comprehensive Lament Test ==="
+
+# Basic variables and timeline
+confess "1. Timeline features:"
+remember x = 5
+x = 10
+x = 15
+confess x
+confess x@past(1)
+confess x@origin
+confess x@age
+
+# Functions
+confess "2. Functions:"
+sigh greet(name) {
+    exhale "Hello, " + name
+}
+confess greet("Lament")
+
+# Recursion
+confess "3. Recursion:"
+sigh fib(n) {
+    if n <= 1 {
+        exhale n
+    }
+    exhale fib(n - 1) + fib(n - 2)
+}
+confess fib(8)
+
+# Built-in functions
+confess "4. Built-in functions:"
+remember nums = [1, 2, 3, 4, 5]
+confess length_of(nums)
+confess ache_of(-42)
+confess sqrt_of_pain(16)
+
+# Conditionals
+confess "5. Conditionals:"
+remember condition = yes
+if condition {
+    confess "Condition is true"
+} else {
+    confess "Condition is false"
+}
+
+# Loops
+confess "6. For loop:"
+for i in range(3) {
+    confess i
+}
+
+# Type system
+confess "7. Type checking:"
+confess typeof(42)
+confess typeof("whisper")
+confess typeof(yes)
+confess typeof(void)
+
+confess "=== All tests passed ==="

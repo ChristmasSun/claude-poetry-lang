@@ -1,0 +1,58 @@
+# Example of clean, hopeful Lament code
+# Well-structured, properly named, and actually used
+
+# Calculate factorial recursively
+sigh calculate_factorial(number) {
+    if number <= 1 {
+        exhale 1
+    }
+    remember previous = calculate_factorial(number - 1)
+    exhale number * previous
+}
+
+# Check if a number is prime
+sigh is_prime_number(candidate) {
+    if candidate < 2 {
+        exhale no
+    }
+
+    remember check_divisor = 2
+    while check_divisor * check_divisor <= candidate {
+        if candidate % check_divisor == 0 {
+            exhale no
+        }
+        check_divisor = check_divisor + 1
+    }
+    exhale yes
+}
+
+# Generate fibonacci sequence
+sigh fibonacci_sequence(count) {
+    remember sequence = [0, 1]
+    remember index = 2
+
+    while index < count {
+        remember previous_one = sequence[index - 1]
+        remember previous_two = sequence[index - 2]
+        remember next_value = previous_one + previous_two
+        confess next_value
+        index = index + 1
+    }
+
+    exhale sequence
+}
+
+# Main execution - actually using all functions
+confess "Testing factorial..."
+remember fact_5 = calculate_factorial(5)
+confess fact_5
+
+confess "Testing prime checker..."
+remember check_7 = is_prime_number(7)
+confess check_7
+
+remember check_8 = is_prime_number(8)
+confess check_8
+
+confess "Generating fibonacci..."
+remember fib = fibonacci_sequence(10)
