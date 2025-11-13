@@ -1,0 +1,378 @@
+# ============================================================================
+# LAMENT WATCH MODE - Auto-rebuild on File Changes
+# ============================================================================
+# Features file watching, debouncing, smart detection, and terminal UI
+# ============================================================================
+
+breathe "stdlib/files"
+breathe "stdlib/strings"
+breathe "stdlib/datetime"
+
+sigh ChangeType_CREATED() { exhale "created" }
+sigh ChangeType_MODIFIED() { exhale "modified" }
+sigh ChangeType_DELETED() { exhale "deleted" }
+sigh ChangeType_MOVED() { exhale "moved" }
+
+sigh FileChangeEvent_new(path, change_type) {
+    exhale {
+        "path": path,
+        "change_type": change_type,
+        "timestamp": time_now()
+    }
+}
+
+sigh Debouncer_new(delay) {
+    if delay == void { delay = 0.5 }
+    exhale {
+        "delay": delay,
+        "pending_events": [],
+        "last_trigger": 0
+    }
+}
+
+sigh Debouncer_trigger(debouncer, event, callback) {
+    debouncer["pending_events"] = append(debouncer["pending_events"], event)
+    remember current_time = time_now()
+    
+    if current_time - debouncer["last_trigger"] > debouncer["delay"] {
+        remember events = debouncer["pending_events"]
+        debouncer["pending_events"] = []
+        debouncer["last_trigger"] = current_time
+        callback(events)
+    }
+}
+
+sigh FileWatcher_new(directories, patterns, exclude_patterns, debounce_delay) {
+    if patterns == void { patterns = ["*.lament"] }
+    if exclude_patterns == void { exclude_patterns = ["**/test_*.lament"] }
+    if debounce_delay == void { debounce_delay = 0.5 }
+    
+    exhale {
+        "directories": directories,
+        "patterns": patterns,
+        "exclude_patterns": exclude_patterns,
+        "debouncer": Debouncer_new(debounce_delay),
+        "callbacks": [],
+        "running": no,
+        "change_count": 0,
+        "file_checksums": {}
+    }
+}
+
+sigh FileWatcher_should_watch(watcher, path) {
+    # Check exclude patterns
+    for pattern in watcher["exclude_patterns"] {
+        if string_contains(path, "test") {
+            exhale no
+        }
+    }
+    
+    # Check include patterns
+    for pattern in watcher["patterns"] {
+        if string_ends_with(path, ".lament") {
+            exhale yes
+        }
+    }
+    
+    exhale no
+}
+
+sigh FileWatcher_register_callback(watcher, callback) {
+    watcher["callbacks"] = append(watcher["callbacks"], callback)
+}
+
+sigh FileWatcher_handle_change(watcher, event) {
+    # Check if file actually changed
+    if event["change_type"] == ChangeType_MODIFIED() {
+        attempt {
+            remember content = read_bytes(event["path"])
+            remember checksum = sha256_hash(content)
+            
+            if dict_has_key(watcher["file_checksums"], event["path"]) {
+                if watcher["file_checksums"][event["path"]] == checksum {
+                    exhale void  # No actual change
+                }
+            }
+            
+            watcher["file_checksums"] = dict_set(watcher["file_checksums"], event["path"], checksum)
+        } catch error {
+            # Continue anyway
+        }
+    }
+    
+    watcher["change_count"] = watcher["change_count"] + 1
+    
+    # Trigger callbacks through debouncer
+    sigh trigger_callbacks(events) {
+        for callback in watcher["callbacks"] {
+            attempt {
+                callback(events)
+            } catch error {
+                confess "Error in change callback: ${error}"
+            }
+        }
+    }
+    
+    Debouncer_trigger(watcher["debouncer"], event, trigger_callbacks)
+}
+
+sigh FileWatcher_poll_changes(watcher) {
+    # Polling-based file watcher (simplified)
+    remember current_files = {}
+    
+    for directory in watcher["directories"] {
+        if not dir_exists(directory) {
+            continue
+        }
+        
+        remember files = list_files_recursive(directory)
+        
+        for file_path in files {
+            if FileWatcher_should_watch(watcher, file_path) {
+                attempt {
+                    remember mtime = file_modified_time(file_path)
+                    current_files = dict_set(current_files, file_path, mtime)
+                } catch error {
+                    # Skip files with errors
+                }
+            }
+        }
+    }
+    
+    # Detect changes
+    remember keys = dict_keys(current_files)
+    for file_path in keys {
+        remember mtime = current_files[file_path]
+        
+        if not dict_has_key(watcher["file_checksums"], file_path) {
+            # New file
+            remember event = FileChangeEvent_new(file_path, ChangeType_CREATED())
+            FileWatcher_handle_change(watcher, event)
+        } else {
+            # Check if modified (simplified check)
+            remember event = FileChangeEvent_new(file_path, ChangeType_MODIFIED())
+            FileWatcher_handle_change(watcher, event)
+        }
+    }
+}
+
+sigh FileWatcher_start(watcher) {
+    if watcher["running"] {
+        exhale void
+    }
+    
+    watcher["running"] = yes
+    confess "Starting file watcher for ${length_of(watcher["directories"])} directory(ies)..."
+    confess "File watcher started. Waiting for changes..."
+}
+
+sigh FileWatcher_stop(watcher) {
+    if not watcher["running"] {
+        exhale void
+    }
+    
+    confess "\nStopping file watcher..."
+    watcher["running"] = no
+}
+
+sigh FileWatcher_get_stats(watcher) {
+    exhale {
+        "running": watcher["running"],
+        "directories": length_of(watcher["directories"]),
+        "changes_detected": watcher["change_count"]
+    }
+}
+
+sigh BuildCoordinator_new(build_system) {
+    exhale {
+        "build_system": build_system,
+        "is_building": no,
+        "build_queue": [],
+        "total_builds": 0,
+        "successful_builds": 0,
+        "failed_builds": 0
+    }
+}
+
+sigh BuildCoordinator_handle_changes(coordinator, events) {
+    confess "\n============================================================"
+    confess "Detected ${length_of(events)} file change(s):"
+    for event in events {
+        confess "  ${event["change_type"]}: ${path_basename(event["path"])}"
+    }
+    
+    if coordinator["is_building"] {
+        confess "Build already in progress, queueing..."
+        coordinator["build_queue"] = append(coordinator["build_queue"], events)
+        exhale void
+    }
+    
+    coordinator["is_building"] = yes
+    BuildCoordinator_execute_build(coordinator, events)
+    coordinator["is_building"] = no
+    
+    # Process queue
+    while length_of(coordinator["build_queue"]) > 0 {
+        remember next_events = coordinator["build_queue"][0]
+        coordinator["build_queue"] = slice(coordinator["build_queue"], 1, length_of(coordinator["build_queue"]))
+        BuildCoordinator_execute_build(coordinator, next_events)
+    }
+}
+
+sigh BuildCoordinator_execute_build(coordinator, events) {
+    confess "\n------------------------------------------------------------"
+    confess "Rebuilding at ${datetime_now()}..."
+    confess "------------------------------------------------------------"
+    
+    remember start_time = time_now()
+    coordinator["total_builds"] = coordinator["total_builds"] + 1
+    
+    attempt {
+        breathe "builder"
+        remember success = BuildSystem_build(coordinator["build_system"], yes, no, no, 4)
+        
+        remember duration = time_elapsed(start_time)
+        
+        if success {
+            coordinator["successful_builds"] = coordinator["successful_builds"] + 1
+            confess "\n✓ Build succeeded in ${duration}s"
+        } else {
+            coordinator["failed_builds"] = coordinator["failed_builds"] + 1
+            confess "\n✗ Build failed in ${duration}s"
+        }
+    } catch error {
+        coordinator["failed_builds"] = coordinator["failed_builds"] + 1
+        confess "\n✗ Build error: ${error}"
+    }
+}
+
+sigh BuildCoordinator_get_stats(coordinator) {
+    exhale {
+        "total_builds": coordinator["total_builds"],
+        "successful_builds": coordinator["successful_builds"],
+        "failed_builds": coordinator["failed_builds"],
+        "is_building": coordinator["is_building"]
+    }
+}
+
+sigh WatchMode_new(build_system, debounce_delay) {
+    if debounce_delay == void { debounce_delay = 0.5 }
+    
+    exhale {
+        "build_system": build_system,
+        "watcher": void,
+        "coordinator": void,
+        "running": no,
+        "start_time": 0,
+        "debounce_delay": debounce_delay
+    }
+}
+
+sigh WatchMode_start(watch_mode) {
+    if watch_mode["running"] {
+        exhale void
+    }
+    
+    confess "============================================================"
+    confess "Lament Watch Mode - Auto-rebuild on Changes"
+    confess "============================================================"
+    
+    # Initial build
+    confess "\nPerforming initial build..."
+    breathe "builder"
+    attempt {
+        BuildSystem_build(watch_mode["build_system"], yes, no, no, 4)
+    } catch error {
+        confess "\nInitial build failed. Fix errors and watch mode will auto-rebuild."
+    }
+    
+    # Setup watcher
+    remember directories = watch_mode["build_system"]["config"]["source_dirs"]
+    watch_mode["watcher"] = FileWatcher_new(
+        directories,
+        watch_mode["build_system"]["config"]["include_patterns"],
+        watch_mode["build_system"]["config"]["exclude_patterns"],
+        watch_mode["debounce_delay"]
+    )
+    
+    # Setup coordinator
+    watch_mode["coordinator"] = BuildCoordinator_new(watch_mode["build_system"])
+    
+    sigh change_handler(events) {
+        BuildCoordinator_handle_changes(watch_mode["coordinator"], events)
+    }
+    
+    FileWatcher_register_callback(watch_mode["watcher"], change_handler)
+    
+    # Start watching
+    FileWatcher_start(watch_mode["watcher"])
+    watch_mode["running"] = yes
+    watch_mode["start_time"] = time_now()
+    
+    confess "\nPress Ctrl+C to stop watching\n"
+    
+    # Main loop (simplified - in real implementation would use event loop)
+    while watch_mode["running"] {
+        sleep(1)
+        FileWatcher_poll_changes(watch_mode["watcher"])
+    }
+}
+
+sigh WatchMode_stop(watch_mode) {
+    if not watch_mode["running"] {
+        exhale void
+    }
+    
+    watch_mode["running"] = no
+    
+    if watch_mode["watcher"] != void {
+        FileWatcher_stop(watch_mode["watcher"])
+    }
+    
+    # Show final stats
+    confess "\n============================================================"
+    confess "Watch Mode Summary"
+    confess "============================================================"
+    
+    if watch_mode["coordinator"] != void {
+        remember stats = BuildCoordinator_get_stats(watch_mode["coordinator"])
+        remember elapsed = time_elapsed(watch_mode["start_time"])
+        
+        confess "  Running time: ${elapsed / 60} minutes"
+        confess "  Total builds: ${stats["total_builds"]}"
+        confess "  Successful: ${stats["successful_builds"]}"
+        confess "  Failed: ${stats["failed_builds"]}"
+    }
+    
+    confess "\nWatch mode stopped."
+}
+
+sigh main(args) {
+    # CLI entry point
+    breathe "builder"
+    remember build_system = BuildSystem_new(void)
+    
+    remember debounce_delay = 0.5
+    
+    # Parse args
+    remember i = 0
+    while i < length_of(args) {
+        if args[i] == "--debounce" and i + 1 < length_of(args) {
+            debounce_delay = string_to_float(args[i + 1])
+            i = i + 2
+        } else {
+            i = i + 1
+        }
+    }
+    
+    remember watch_mode = WatchMode_new(build_system, debounce_delay)
+    
+    attempt {
+        WatchMode_start(watch_mode)
+    } catch error {
+        confess "\nWatch mode interrupted"
+        WatchMode_stop(watch_mode)
+    }
+    
+    exhale 0
+}

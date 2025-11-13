@@ -1,0 +1,514 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - REGEX MODULE
+# ============================================================================
+# Regular expression operations
+# Provides pattern matching, capture groups, replace, and split operations
+# ============================================================================
+
+# ============================================================================
+# PATTERN COMPILATION
+# ============================================================================
+
+sigh compile(pattern, flags) {
+    # Compile regular expression pattern
+    # flags: "i" (case-insensitive), "m" (multiline), "s" (dotall), "g" (global)
+
+    if flags == void {
+        flags = ""
+    }
+
+    attempt {
+        remember regex_obj = regex_compile(pattern, flags)
+
+        remember obj = {
+            "pattern": pattern,
+            "flags": flags,
+            "regex": regex_obj,
+            "match": void,
+            "matches": void,
+            "test": void,
+            "replace": void,
+            "split": void
+        }
+
+        sigh match_fn(text) {
+            attempt {
+                remember result = regex_match(obj["regex"], text)
+                if result == void {
+                    exhale void
+                }
+
+                # Return match object
+                exhale create_match_object(result, text)
+            } catch error {
+                exhale void
+            }
+        }
+
+        sigh matches_fn(text) {
+            attempt {
+                remember results = regex_match_all(obj["regex"], text)
+                remember matches = []
+
+                for result in results {
+                    matches = append_list(matches, create_match_object(result, text))
+                }
+
+                exhale matches
+            } catch error {
+                exhale []
+            }
+        }
+
+        sigh test_fn(text) {
+            remember result = match_fn(text)
+            exhale result != void
+        }
+
+        sigh replace_fn(text, replacement) {
+            attempt {
+                exhale regex_replace(obj["regex"], text, replacement)
+            } catch error {
+                raise "Regex replace failed: ${error}"
+            }
+        }
+
+        sigh split_fn(text, limit) {
+            attempt {
+                if limit == void {
+                    exhale regex_split(obj["regex"], text, -1)
+                } else {
+                    exhale regex_split(obj["regex"], text, limit)
+                }
+            } catch error {
+                raise "Regex split failed: ${error}"
+            }
+        }
+
+        obj["match"] = match_fn
+        obj["matches"] = matches_fn
+        obj["test"] = test_fn
+        obj["replace"] = replace_fn
+        obj["split"] = split_fn
+
+        exhale obj
+    } catch error {
+        raise "Failed to compile regex pattern '${pattern}': ${error}"
+    }
+}
+
+# ============================================================================
+# MATCHING FUNCTIONS
+# ============================================================================
+
+sigh match(pattern, text, flags) {
+    # Match pattern against text (returns first match)
+
+    remember regex = compile(pattern, flags)
+    exhale regex["match"](text)
+}
+
+sigh matches(pattern, text, flags) {
+    # Find all matches of pattern in text
+
+    remember regex = compile(pattern, flags)
+    exhale regex["matches"](text)
+}
+
+sigh test(pattern, text, flags) {
+    # Test if pattern matches text
+
+    remember regex = compile(pattern, flags)
+    exhale regex["test"](text)
+}
+
+sigh search(pattern, text, flags) {
+    # Search for pattern in text (alias for match)
+
+    exhale match(pattern, text, flags)
+}
+
+# ============================================================================
+# REPLACE FUNCTIONS
+# ============================================================================
+
+sigh replace(pattern, text, replacement, flags) {
+    # Replace first occurrence of pattern with replacement
+
+    if flags == void {
+        flags = ""
+    }
+
+    remember regex = compile(pattern, flags)
+    exhale regex["replace"](text, replacement)
+}
+
+sigh replace_all(pattern, text, replacement, flags) {
+    # Replace all occurrences of pattern with replacement
+
+    if flags == void {
+        flags = "g"
+    } else {
+        if not contains_char(flags, "g") {
+            flags = "${flags}g"
+        }
+    }
+
+    remember regex = compile(pattern, flags)
+    exhale regex["replace"](text, replacement)
+}
+
+sigh replace_fn(pattern, text, replacer_fn, flags) {
+    # Replace using replacer function
+    # replacer_fn receives match object and returns replacement string
+
+    remember matches_list = matches(pattern, text, flags)
+
+    if length_of(matches_list) == 0 {
+        exhale text
+    }
+
+    remember result = text
+    remember offset = 0
+
+    for match_obj in matches_list {
+        remember replacement = replacer_fn(match_obj)
+        remember start = match_obj["start"] + offset
+        remember end_pos = match_obj["end"] + offset
+
+        remember before = substring(result, 0, start)
+        remember after = substring(result, end_pos, string_length(result))
+        result = "${before}${replacement}${after}"
+
+        remember old_len = end_pos - start
+        remember new_len = string_length(replacement)
+        offset = offset + (new_len - old_len)
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# SPLIT FUNCTIONS
+# ============================================================================
+
+sigh split(pattern, text, limit, flags) {
+    # Split text by pattern
+
+    remember regex = compile(pattern, flags)
+    exhale regex["split"](text, limit)
+}
+
+sigh split_lines(text) {
+    # Split text by line breaks (handles \n, \r\n, \r)
+
+    exhale split("\\r?\\n", text, void, void)
+}
+
+# ============================================================================
+# CAPTURE GROUPS
+# ============================================================================
+
+sigh groups(match_obj) {
+    # Get all capture groups from match object
+
+    if match_obj == void {
+        exhale []
+    }
+
+    exhale match_obj["groups"]
+}
+
+sigh group(match_obj, index) {
+    # Get specific capture group by index (0 = full match)
+
+    if match_obj == void {
+        exhale void
+    }
+
+    remember groups_list = match_obj["groups"]
+
+    if index < 0 or index >= length_of(groups_list) {
+        exhale void
+    }
+
+    exhale groups_list[index]
+}
+
+sigh named_group(match_obj, name) {
+    # Get named capture group
+
+    if match_obj == void {
+        exhale void
+    }
+
+    if not has_key(match_obj, "named_groups") {
+        exhale void
+    }
+
+    remember named_groups = match_obj["named_groups"]
+
+    if not has_key(named_groups, name) {
+        exhale void
+    }
+
+    exhale named_groups[name]
+}
+
+# ============================================================================
+# VALIDATION PATTERNS
+# ============================================================================
+
+sigh is_email(text) {
+    # Validate email address
+
+    remember pattern = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    exhale test(pattern, text, void)
+}
+
+sigh is_url(text) {
+    # Validate URL
+
+    remember pattern = "^https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/.*)?$"
+    exhale test(pattern, text, void)
+}
+
+sigh is_ip(text) {
+    # Validate IPv4 address
+
+    remember pattern = "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    exhale test(pattern, text, void)
+}
+
+sigh is_hex(text) {
+    # Validate hexadecimal string
+
+    remember pattern = "^[0-9a-fA-F]+$"
+    exhale test(pattern, text, void)
+}
+
+sigh is_alpha(text) {
+    # Check if text contains only letters
+
+    remember pattern = "^[a-zA-Z]+$"
+    exhale test(pattern, text, void)
+}
+
+sigh is_numeric(text) {
+    # Check if text contains only digits
+
+    remember pattern = "^[0-9]+$"
+    exhale test(pattern, text, void)
+}
+
+sigh is_alphanumeric(text) {
+    # Check if text contains only letters and digits
+
+    remember pattern = "^[a-zA-Z0-9]+$"
+    exhale test(pattern, text, void)
+}
+
+# ============================================================================
+# EXTRACTION FUNCTIONS
+# ============================================================================
+
+sigh extract_emails(text) {
+    # Extract all email addresses from text
+
+    remember pattern = "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+    remember matches_list = matches(pattern, text, void)
+
+    remember result = []
+    for match_obj in matches_list {
+        result = append_list(result, match_obj["text"])
+    }
+
+    exhale result
+}
+
+sigh extract_urls(text) {
+    # Extract all URLs from text
+
+    remember pattern = "https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/[^\\s]*)?"
+    remember matches_list = matches(pattern, text, void)
+
+    remember result = []
+    for match_obj in matches_list {
+        result = append_list(result, match_obj["text"])
+    }
+
+    exhale result
+}
+
+sigh extract_numbers(text) {
+    # Extract all numbers from text
+
+    remember pattern = "-?[0-9]+(\\.[0-9]+)?"
+    remember matches_list = matches(pattern, text, void)
+
+    remember result = []
+    for match_obj in matches_list {
+        result = append_list(result, match_obj["text"])
+    }
+
+    exhale result
+}
+
+sigh extract_words(text) {
+    # Extract all words from text
+
+    remember pattern = "[a-zA-Z]+"
+    remember matches_list = matches(pattern, text, void)
+
+    remember result = []
+    for match_obj in matches_list {
+        result = append_list(result, match_obj["text"])
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# ESCAPE / QUOTE
+# ============================================================================
+
+sigh escape(text) {
+    # Escape special regex characters
+
+    remember special_chars = "\\^$.|?*+()[]{}'"
+
+    remember result = ""
+    remember i = 0
+    remember len = string_length(text)
+
+    while i < len {
+        remember ch = char_at(text, i)
+
+        if contains_char(special_chars, ch) {
+            result = "${result}\\${ch}"
+        } else {
+            result = "${result}${ch}"
+        }
+
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh quote(text) {
+    # Alias for escape
+
+    exhale escape(text)
+}
+
+# ============================================================================
+# COMMON PATTERNS
+# ============================================================================
+
+sigh pattern_email() {
+    exhale "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+}
+
+sigh pattern_url() {
+    exhale "https?://[a-zA-Z0-9.-]+(:[0-9]+)?(/[^\\s]*)?"
+}
+
+sigh pattern_ip() {
+    exhale "((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)"
+}
+
+sigh pattern_hex() {
+    exhale "[0-9a-fA-F]+"
+}
+
+sigh pattern_uuid() {
+    exhale "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+}
+
+sigh pattern_date() {
+    # YYYY-MM-DD format
+    exhale "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+}
+
+sigh pattern_time() {
+    # HH:MM:SS format
+    exhale "[0-9]{2}:[0-9]{2}:[0-9]{2}"
+}
+
+sigh pattern_phone() {
+    # US phone number
+    exhale "\\(?[0-9]{3}\\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}"
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh create_match_object(result, text) {
+    # Create match object from regex result
+    # result format: { start, end, groups, named_groups }
+
+    remember start = result["start"]
+    remember end_pos = result["end"]
+    remember matched_text = substring(text, start, end_pos)
+
+    remember match_obj = {
+        "text": matched_text,
+        "start": start,
+        "end": end_pos,
+        "groups": result["groups"],
+        "named_groups": result["named_groups"]
+    }
+
+    exhale match_obj
+}
+
+sigh contains_char(str, ch) {
+    remember i = 0
+    remember len = string_length(str)
+
+    while i < len {
+        if char_at(str, i) == ch {
+            exhale yes
+        }
+        i = i + 1
+    }
+
+    exhale no
+}
+
+sigh has_key(dict, key) {
+    attempt {
+        remember value = dict[key]
+        exhale yes
+    } catch error {
+        exhale no
+    }
+}
+
+sigh append_list(list, item) {
+    remember result = []
+    for existing in list {
+        result = push(result, existing)
+    }
+    result = push(result, item)
+    exhale result
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    compile,
+    match, matches, test, search,
+    replace, replace_all, replace_fn,
+    split, split_lines,
+    groups, group, named_group,
+    is_email, is_url, is_ip, is_hex, is_alpha, is_numeric, is_alphanumeric,
+    extract_emails, extract_urls, extract_numbers, extract_words,
+    escape, quote,
+    pattern_email, pattern_url, pattern_ip, pattern_hex, pattern_uuid,
+    pattern_date, pattern_time, pattern_phone
+}

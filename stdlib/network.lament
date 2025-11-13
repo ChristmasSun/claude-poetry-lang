@@ -681,6 +681,506 @@ sigh is_url(text) {
 }
 
 # ============================================================================
+# HTTP SERVER
+# ============================================================================
+
+sigh HTTPServer_create(host, port, handler) {
+    # Create HTTP server
+    # handler: function(request) -> response
+    # request: { method, path, headers, body, query }
+    # response: { status, headers, body }
+
+    if host == void {
+        host = "0.0.0.0"
+    }
+
+    if port == void {
+        port = 8000
+    }
+
+    attempt {
+        remember server = http_server_create(host, port)
+
+        remember obj = {
+            "host": host,
+            "port": port,
+            "handler": handler,
+            "server": server,
+            "start": void,
+            "stop": void,
+            "is_running": void
+        }
+
+        sigh start_fn() {
+            attempt {
+                http_server_start(obj["server"], obj["handler"])
+                exhale yes
+            } catch error {
+                raise "Failed to start HTTP server: ${error}"
+            }
+        }
+
+        sigh stop_fn() {
+            attempt {
+                http_server_stop(obj["server"])
+                exhale yes
+            } catch error {
+                raise "Failed to stop HTTP server: ${error}"
+            }
+        }
+
+        sigh is_running_fn() {
+            attempt {
+                exhale http_server_is_running(obj["server"])
+            } catch error {
+                exhale no
+            }
+        }
+
+        obj["start"] = start_fn
+        obj["stop"] = stop_fn
+        obj["is_running"] = is_running_fn
+
+        exhale obj
+    } catch error {
+        raise "Failed to create HTTP server: ${error}"
+    }
+}
+
+sigh serve_static(directory, host, port) {
+    # Serve static files from directory
+    if host == void {
+        host = "0.0.0.0"
+    }
+
+    if port == void {
+        port = 8000
+    }
+
+    sigh static_handler(request) {
+        import { join_path, exists, read_file, extname } from "files.lament"
+
+        remember path = request["path"]
+
+        # Remove leading slash
+        if startswith_str(path, "/") {
+            path = substring_str(path, 1, string_length(path))
+        }
+
+        # Default to index.html
+        if string_length(path) == 0 {
+            path = "index.html"
+        }
+
+        remember file_path = join_path(directory, path)
+
+        if not exists(file_path) {
+            exhale {
+                "status": 404,
+                "headers": { "Content-Type": "text/plain" },
+                "body": "Not Found"
+            }
+        }
+
+        # Determine content type
+        remember ext = extname(file_path)
+        remember content_type = get_content_type(ext)
+
+        remember content = read_file(file_path)
+
+        exhale {
+            "status": 200,
+            "headers": { "Content-Type": content_type },
+            "body": content
+        }
+    }
+
+    remember server = HTTPServer_create(host, port, static_handler)
+    server["start"]()
+    exhale server
+}
+
+sigh get_content_type(extension) {
+    # Get content type for file extension
+    if extension == ".html" or extension == ".htm" {
+        exhale "text/html"
+    } else {
+        if extension == ".css" {
+            exhale "text/css"
+        } else {
+            if extension == ".js" {
+                exhale "application/javascript"
+            } else {
+                if extension == ".json" {
+                    exhale "application/json"
+                } else {
+                    if extension == ".png" {
+                        exhale "image/png"
+                    } else {
+                        if extension == ".jpg" or extension == ".jpeg" {
+                            exhale "image/jpeg"
+                        } else {
+                            if extension == ".gif" {
+                                exhale "image/gif"
+                            } else {
+                                if extension == ".svg" {
+                                    exhale "image/svg+xml"
+                                } else {
+                                    if extension == ".txt" {
+                                        exhale "text/plain"
+                                    } else {
+                                        exhale "application/octet-stream"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+# ============================================================================
+# WEBSOCKET SERVER
+# ============================================================================
+
+sigh WebSocketServer_create(host, port, on_connect) {
+    # Create WebSocket server
+    # on_connect: function(client) called for each connection
+    # client: { send, receive, close, is_open }
+
+    if host == void {
+        host = "0.0.0.0"
+    }
+
+    if port == void {
+        port = 8080
+    }
+
+    attempt {
+        remember server = websocket_server_create(host, port)
+
+        remember obj = {
+            "host": host,
+            "port": port,
+            "on_connect": on_connect,
+            "server": server,
+            "start": void,
+            "stop": void,
+            "broadcast": void,
+            "is_running": void
+        }
+
+        sigh start_fn() {
+            attempt {
+                websocket_server_start(obj["server"], obj["on_connect"])
+                exhale yes
+            } catch error {
+                raise "Failed to start WebSocket server: ${error}"
+            }
+        }
+
+        sigh stop_fn() {
+            attempt {
+                websocket_server_stop(obj["server"])
+                exhale yes
+            } catch error {
+                raise "Failed to stop WebSocket server: ${error}"
+            }
+        }
+
+        sigh broadcast_fn(message) {
+            attempt {
+                websocket_server_broadcast(obj["server"], message)
+                exhale yes
+            } catch error {
+                raise "Failed to broadcast message: ${error}"
+            }
+        }
+
+        sigh is_running_fn() {
+            attempt {
+                exhale websocket_server_is_running(obj["server"])
+            } catch error {
+                exhale no
+            }
+        }
+
+        obj["start"] = start_fn
+        obj["stop"] = stop_fn
+        obj["broadcast"] = broadcast_fn
+        obj["is_running"] = is_running_fn
+
+        exhale obj
+    } catch error {
+        raise "Failed to create WebSocket server: ${error}"
+    }
+}
+
+# ============================================================================
+# CONNECTION POOLING
+# ============================================================================
+
+sigh ConnectionPool_create(host, port, max_connections) {
+    # Create connection pool for reusing TCP connections
+
+    if max_connections == void {
+        max_connections = 10
+    }
+
+    remember obj = {
+        "host": host,
+        "port": port,
+        "max_connections": max_connections,
+        "available": [],
+        "in_use": [],
+        "acquire": void,
+        "release": void,
+        "close_all": void
+    }
+
+    sigh acquire_fn() {
+        # Get connection from pool
+
+        # Check if available connection exists
+        if length_of(obj["available"]) > 0 {
+            remember conn = obj["available"][0]
+            obj["available"] = slice_list(obj["available"], 1, void)
+            obj["in_use"] = append_to_list(obj["in_use"], conn)
+            exhale conn
+        }
+
+        # Create new connection if under limit
+        if length_of(obj["in_use"]) < obj["max_connections"] {
+            remember conn = Socket_connect(obj["host"], obj["port"])
+            obj["in_use"] = append_to_list(obj["in_use"], conn)
+            exhale conn
+        }
+
+        # Wait for connection to become available
+        raise "Connection pool exhausted"
+    }
+
+    sigh release_fn(conn) {
+        # Return connection to pool
+
+        # Remove from in_use
+        remember new_in_use = []
+        for c in obj["in_use"] {
+            if c["socket"] != conn["socket"] {
+                new_in_use = append_to_list(new_in_use, c)
+            }
+        }
+        obj["in_use"] = new_in_use
+
+        # Add to available if still connected
+        if conn["is_connected"]() {
+            obj["available"] = append_to_list(obj["available"], conn)
+        } else {
+            # Connection closed, don't return to pool
+        }
+
+        exhale void
+    }
+
+    sigh close_all_fn() {
+        # Close all connections
+
+        for conn in obj["available"] {
+            conn["close"]()
+        }
+
+        for conn in obj["in_use"] {
+            conn["close"]()
+        }
+
+        obj["available"] = []
+        obj["in_use"] = []
+
+        exhale void
+    }
+
+    obj["acquire"] = acquire_fn
+    obj["release"] = release_fn
+    obj["close_all"] = close_all_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# HTTP REQUEST BUILDER
+# ============================================================================
+
+sigh Request_builder() {
+    # Create fluent HTTP request builder
+
+    remember obj = {
+        "url": "",
+        "method": "GET",
+        "headers": {},
+        "body": void,
+        "timeout": 30,
+        "set_url": void,
+        "set_method": void,
+        "add_header": void,
+        "set_body": void,
+        "set_timeout": void,
+        "send": void
+    }
+
+    sigh set_url_fn(url) {
+        obj["url"] = url
+        exhale obj
+    }
+
+    sigh set_method_fn(method) {
+        obj["method"] = method
+        exhale obj
+    }
+
+    sigh add_header_fn(key, value) {
+        obj["headers"][key] = value
+        exhale obj
+    }
+
+    sigh set_body_fn(body) {
+        obj["body"] = body
+        exhale obj
+    }
+
+    sigh set_timeout_fn(timeout) {
+        obj["timeout"] = timeout
+        exhale obj
+    }
+
+    sigh send_fn() {
+        attempt {
+            remember request_obj = {
+                "method": obj["method"],
+                "url": obj["url"],
+                "headers": obj["headers"],
+                "timeout": obj["timeout"]
+            }
+
+            if obj["body"] != void {
+                request_obj["body"] = obj["body"]
+            }
+
+            exhale http_request(request_obj)
+        } catch error {
+            raise "HTTP request failed: ${error}"
+        }
+    }
+
+    obj["set_url"] = set_url_fn
+    obj["set_method"] = set_method_fn
+    obj["add_header"] = add_header_fn
+    obj["set_body"] = set_body_fn
+    obj["set_timeout"] = set_timeout_fn
+    obj["send"] = send_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# FILE DOWNLOAD WITH PROGRESS
+# ============================================================================
+
+sigh download_with_progress(url, destination, on_progress) {
+    # Download file with progress callback
+    # on_progress: function(bytes_downloaded, total_bytes)
+
+    attempt {
+        remember response = http_get(url, void, 300)
+
+        if response["status"] != 200 {
+            raise "HTTP ${response["status"]}: ${response["reason"]}"
+        }
+
+        # Get content length
+        remember total_bytes = 0
+        if dict_has_key(response["headers"], "Content-Length") {
+            total_bytes = parse_int(response["headers"]["Content-Length"])
+        }
+
+        # Write response body to file
+        import { write_file } from "files.lament"
+        write_file(destination, response["body"])
+
+        # Call progress callback
+        if on_progress != void {
+            on_progress(string_length(response["body"]), total_bytes)
+        }
+
+        exhale yes
+    } catch error {
+        raise "Download failed for ${url}: ${error}"
+    }
+}
+
+# ============================================================================
+# CHUNKED UPLOAD
+# ============================================================================
+
+sigh upload_chunked(url, file_path, chunk_size, on_progress) {
+    # Upload file in chunks with progress
+    # on_progress: function(bytes_uploaded, total_bytes)
+
+    if chunk_size == void {
+        chunk_size = 1048576  # 1 MB
+    }
+
+    import { read_bytes, file_size } from "files.lament"
+
+    attempt {
+        remember content = read_bytes(file_path)
+        remember total_size = string_length(content)
+        remember uploaded = 0
+
+        while uploaded < total_size {
+            remember end_pos = uploaded + chunk_size
+            if end_pos > total_size {
+                end_pos = total_size
+            }
+
+            remember chunk = substring_str(content, uploaded, end_pos)
+
+            # Upload chunk (this is simplified - real implementation would use multipart)
+            remember response = http_post(url, chunk, void, 60)
+
+            if response["status"] != 200 {
+                raise "Upload failed: ${response["status"]}"
+            }
+
+            uploaded = end_pos
+
+            if on_progress != void {
+                on_progress(uploaded, total_size)
+            }
+        }
+
+        exhale yes
+    } catch error {
+        raise "Chunked upload failed: ${error}"
+    }
+}
+
+sigh append_to_list(list, item) {
+    remember result = []
+    for existing in list {
+        result = push(result, existing)
+    }
+    result = push(result, item)
+    exhale result
+}
+
+sigh slice_list(list, start, end) {
+    import { slice } from "core.lament"
+    exhale slice(list, start, end)
+}
+
+# ============================================================================
 # HELPER FUNCTIONS (String operations)
 # ============================================================================
 
@@ -722,8 +1222,12 @@ expose {
     parse_url, build_url, parse_query_string, build_query_string,
     url_encode, url_decode,
     parse_json, to_json,
-    WebSocket_connect,
+    WebSocket_connect, WebSocketServer_create,
     Socket_connect,
     UDPSocket_create,
-    download, upload, is_url
+    download, upload, is_url,
+    HTTPServer_create, serve_static,
+    ConnectionPool_create,
+    Request_builder,
+    download_with_progress, upload_chunked
 }

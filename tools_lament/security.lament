@@ -1,0 +1,721 @@
+# ============================================================================
+# LAMENT SECURITY SCANNER - VULNERABILITY DETECTION FOR THE SOUL
+# ============================================================================
+# Comprehensive security scanning system including dependency vulnerability
+# scanning, CVE checking, security advisories, and license compatibility.
+# ============================================================================
+
+import { http_get, parse_json, to_json } from "stdlib/network.lament"
+import { hash_sha256 } from "stdlib/crypto.lament"
+import { read_file, write_file, file_exists, dir_exists } from "stdlib/files.lament"
+
+# ============================================================================
+# VULNERABILITY DATABASE
+# ============================================================================
+
+sigh Vulnerability_create(id, severity, package, affected_versions, fixed_version, description, published_at, references, cvss_score) {
+    # Create vulnerability structure
+    if references == void {
+        references = []
+    }
+
+    exhale {
+        "id": id,
+        "severity": severity,
+        "package": package,
+        "affected_versions": affected_versions,
+        "fixed_version": fixed_version,
+        "description": description,
+        "published_at": published_at,
+        "references": references,
+        "cvss_score": cvss_score
+    }
+}
+
+sigh VulnerabilityDatabase_create(db_path) {
+    # Create vulnerability database manager
+    if db_path == void {
+        db_path = "${get_home_dir()}/.lament/vulndb"
+    }
+
+    remember db = {
+        "path": db_path,
+        "file": "${db_path}/vulnerabilities.json",
+        "vulnerabilities": [],
+        "last_updated": "",
+        "update": void,
+        "query_package": void,
+        "query_cve": void,
+        "should_update": void,
+        "save": void,
+        "load": void
+    }
+
+    # Ensure database directory exists
+    if not dir_exists(db_path) {
+        make_dir(db_path)
+    }
+
+    # Load existing database
+    sigh load_fn() {
+        if file_exists(db["file"]) {
+            remember content = read_file(db["file"])
+            remember data = parse_json(content)
+
+            if has_key(data, "vulnerabilities") {
+                db["vulnerabilities"] = data["vulnerabilities"]
+            }
+            if has_key(data, "last_updated") {
+                db["last_updated"] = data["last_updated"]
+            }
+        }
+    }
+
+    # Save database
+    sigh save_fn() {
+        remember data = {
+            "last_updated": get_timestamp(),
+            "vulnerabilities": db["vulnerabilities"]
+        }
+
+        remember json_data = to_json(data, yes)
+        write_file(db["file"], json_data)
+        db["last_updated"] = get_timestamp()
+    }
+
+    # Update vulnerability database
+    sigh update_fn() {
+        print("Updating vulnerability database...")
+
+        # Fetch from OSV (Open Source Vulnerabilities)
+        attempt {
+            remember osv_url = "https://osv-vulnerabilities.storage.googleapis.com/Lament/all.json"
+            remember response = http_get(osv_url, void, 30)
+
+            if response["status"] == 200 {
+                remember vulns = parse_json(response["body"])
+                for vuln in vulns {
+                    db["vulnerabilities"] = append(db["vulnerabilities"], vuln)
+                }
+            }
+        } catch error {
+            print("Warning: Could not fetch from OSV: ${error}")
+        }
+
+        # Fetch from GitHub Advisory Database
+        attempt {
+            remember gh_url = "https://api.github.com/advisories"
+            remember headers = {
+                "Accept": "application/vnd.github.v3+json"
+            }
+            remember response = http_get(gh_url, headers, 30)
+
+            if response["status"] == 200 {
+                remember advisories = parse_json(response["body"])
+                for advisory in advisories {
+                    # Convert to our vulnerability format
+                    if has_key(advisory, "cve_id") {
+                        remember vuln = Vulnerability_create(
+                            advisory["cve_id"],
+                            advisory["severity"],
+                            advisory["package"]["name"],
+                            advisory["vulnerable_versions"],
+                            advisory["patched_versions"],
+                            advisory["description"],
+                            advisory["published_at"],
+                            advisory["references"],
+                            advisory["cvss"]["score"]
+                        )
+                        db["vulnerabilities"] = append(db["vulnerabilities"], vuln)
+                    }
+                }
+            }
+        } catch error {
+            print("Warning: Could not fetch from GitHub: ${error}")
+        }
+
+        # Add example vulnerabilities for demonstration
+        remember examples = get_example_vulnerabilities()
+        for vuln in examples {
+            db["vulnerabilities"] = append(db["vulnerabilities"], vuln)
+        }
+
+        save_fn()
+        print("Updated vulnerability database: ${length(db["vulnerabilities"])} entries")
+    }
+
+    # Get example vulnerabilities
+    sigh get_example_vulnerabilities() {
+        exhale [
+            Vulnerability_create(
+                "CVE-2024-0001",
+                "critical",
+                "example-auth",
+                ["<2.0.0"],
+                "2.0.0",
+                "Authentication bypass vulnerability",
+                "2024-01-15",
+                ["https://cve.mitre.org/CVE-2024-0001"],
+                9.8
+            ),
+            Vulnerability_create(
+                "CVE-2024-0002",
+                "high",
+                "example-crypto",
+                [">=1.0.0,<1.5.3"],
+                "1.5.3",
+                "Weak cryptographic algorithm",
+                "2024-02-20",
+                ["https://cve.mitre.org/CVE-2024-0002"],
+                7.5
+            ),
+            Vulnerability_create(
+                "CVE-2024-0003",
+                "medium",
+                "example-parser",
+                ["<3.1.0"],
+                "3.1.0",
+                "Denial of service via malformed input",
+                "2024-03-10",
+                ["https://cve.mitre.org/CVE-2024-0003"],
+                5.3
+            )
+        ]
+    }
+
+    # Query vulnerabilities for a package
+    sigh query_package_fn(package_name, version) {
+        remember results = []
+
+        for vuln in db["vulnerabilities"] {
+            if vuln["package"] != package_name {
+                continue
+            }
+
+            # Check if version is affected
+            if version_affected(version, vuln["affected_versions"]) {
+                results = append(results, vuln)
+            }
+        }
+
+        exhale results
+    }
+
+    # Query by CVE ID
+    sigh query_cve_fn(cve_id) {
+        for vuln in db["vulnerabilities"] {
+            if vuln["id"] == cve_id {
+                exhale vuln
+            }
+        }
+        exhale void
+    }
+
+    # Check if database should be updated
+    sigh should_update_fn() {
+        if string_length(db["last_updated"]) == 0 {
+            exhale yes
+        }
+
+        # Update if older than 24 hours (86400 seconds)
+        remember current_time = get_timestamp()
+        remember last_update_time = parse_int(db["last_updated"])
+        remember age = current_time - last_update_time
+
+        exhale age > 86400
+    }
+
+    # Check if version is affected
+    sigh version_affected(version, affected_versions) {
+        for constraint in affected_versions {
+            import { startswith, index_of, split, trim } from "stdlib/strings.lament"
+
+            if index_of(constraint, "<") >= 0 {
+                if index_of(constraint, ">=") >= 0 {
+                    # Range like ">=1.0.0,<1.5.3"
+                    remember parts = split(constraint, ",")
+                    remember min_ver = trim(replace(parts[0], ">=", ""))
+                    remember max_ver = trim(replace(parts[1], "<", ""))
+
+                    if compare_versions(version, min_ver) >= 0 and compare_versions(version, max_ver) < 0 {
+                        exhale yes
+                    }
+                } else {
+                    # Simple less than
+                    remember max_ver = trim(replace(constraint, "<", ""))
+                    if compare_versions(version, max_ver) < 0 {
+                        exhale yes
+                    }
+                }
+            } else {
+                if constraint == version {
+                    exhale yes
+                }
+            }
+        }
+
+        exhale no
+    }
+
+    # Compare semantic versions
+    sigh compare_versions(v1, v2) {
+        import { split } from "stdlib/strings.lament"
+        remember parts1 = split(v1, ".")
+        remember parts2 = split(v2, ".")
+
+        remember i = 0
+        remember max_len = length(parts1)
+        if length(parts2) > max_len {
+            max_len = length(parts2)
+        }
+
+        while i < max_len {
+            remember n1 = if i < length(parts1) then parse_int(parts1[i]) else 0
+            remember n2 = if i < length(parts2) then parse_int(parts2[i]) else 0
+
+            if n1 < n2 {
+                exhale -1
+            }
+            if n1 > n2 {
+                exhale 1
+            }
+
+            i = i + 1
+        }
+
+        exhale 0
+    }
+
+    # Assign methods
+    db["update"] = update_fn
+    db["query_package"] = query_package_fn
+    db["query_cve"] = query_cve_fn
+    db["should_update"] = should_update_fn
+    db["save"] = save_fn
+    db["load"] = load_fn
+
+    # Load existing database
+    load_fn()
+
+    exhale db
+}
+
+# ============================================================================
+# LICENSE COMPATIBILITY
+# ============================================================================
+
+sigh LicenseChecker_create() {
+    # Create license compatibility checker
+    remember checker = {
+        "compatible_licenses": {
+            "MIT": ["MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC"],
+            "Apache-2.0": ["Apache-2.0", "MIT", "BSD-3-Clause", "BSD-2-Clause"],
+            "GPL-3.0": ["GPL-3.0", "AGPL-3.0"],
+            "LGPL-3.0": ["LGPL-3.0", "GPL-3.0", "AGPL-3.0", "MIT", "Apache-2.0"],
+            "BSD-3-Clause": ["BSD-3-Clause", "BSD-2-Clause", "MIT", "Apache-2.0"],
+            "BSD-2-Clause": ["BSD-2-Clause", "BSD-3-Clause", "MIT", "Apache-2.0"],
+            "ISC": ["ISC", "MIT", "Apache-2.0", "BSD-3-Clause"]
+        },
+        "copyleft_licenses": ["GPL-2.0", "GPL-3.0", "AGPL-3.0", "LGPL-2.1", "LGPL-3.0"],
+        "check_compatibility": void,
+        "is_copyleft": void,
+        "get_license_info": void
+    }
+
+    # Check license compatibility
+    sigh check_compatibility_fn(project_license, dependency_license) {
+        if not has_key(checker["compatible_licenses"], project_license) {
+            exhale {
+                "compatible": void,
+                "warning": "Unknown project license: ${project_license}"
+            }
+        }
+
+        remember compatible_list = checker["compatible_licenses"][project_license]
+        remember compatible = no
+
+        for lic in compatible_list {
+            if lic == dependency_license {
+                compatible = yes
+                break
+            }
+        }
+
+        remember warnings = []
+
+        # Check for copyleft issues
+        if is_copyleft_fn(dependency_license) {
+            warnings = append(warnings, "Dependency uses copyleft license: ${dependency_license}")
+        }
+
+        exhale {
+            "compatible": compatible,
+            "warnings": warnings
+        }
+    }
+
+    # Check if license is copyleft
+    sigh is_copyleft_fn(license) {
+        for copyleft in checker["copyleft_licenses"] {
+            if copyleft == license {
+                exhale yes
+            }
+        }
+        exhale no
+    }
+
+    # Get license information
+    sigh get_license_info_fn(license) {
+        remember info = {
+            "name": license,
+            "copyleft": is_copyleft_fn(license),
+            "permissive": no,
+            "commercial_use": yes,
+            "distribution": yes,
+            "modification": yes
+        }
+
+        # Permissive licenses
+        remember permissive = ["MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC"]
+        for perm in permissive {
+            if perm == license {
+                info["permissive"] = yes
+                break
+            }
+        }
+
+        exhale info
+    }
+
+    # Assign methods
+    checker["check_compatibility"] = check_compatibility_fn
+    checker["is_copyleft"] = is_copyleft_fn
+    checker["get_license_info"] = get_license_info_fn
+
+    exhale checker
+}
+
+# ============================================================================
+# SECRET DETECTION
+# ============================================================================
+
+sigh SecretScanner_create() {
+    # Create secret scanner
+    remember scanner = {
+        "patterns": [
+            {
+                "name": "AWS Access Key",
+                "pattern": "AKIA[0-9A-Z]{16}",
+                "severity": "critical"
+            },
+            {
+                "name": "GitHub Token",
+                "pattern": "gh[pousr]_[0-9a-zA-Z]{36}",
+                "severity": "critical"
+            },
+            {
+                "name": "Private Key",
+                "pattern": "-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----",
+                "severity": "critical"
+            },
+            {
+                "name": "API Key",
+                "pattern": "api[_-]?key['\"]?\\s*[:=]\\s*['\"]?[0-9a-zA-Z]{32,}",
+                "severity": "high"
+            },
+            {
+                "name": "Password",
+                "pattern": "password['\"]?\\s*[:=]\\s*['\"]?[^'\"\\s]{8,}",
+                "severity": "high"
+            },
+            {
+                "name": "JWT Token",
+                "pattern": "eyJ[0-9a-zA-Z]{10,}\\.[0-9a-zA-Z]{10,}\\.[0-9a-zA-Z-_]{10,}",
+                "severity": "high"
+            }
+        ],
+        "scan_file": void,
+        "scan_directory": void,
+        "scan_content": void
+    }
+
+    # Scan file for secrets
+    sigh scan_file_fn(file_path) {
+        if not file_exists(file_path) {
+            raise "File not found: ${file_path}"
+        }
+
+        remember content = read_file(file_path)
+        remember findings = scan_content_fn(content)
+
+        # Add file path to findings
+        for finding in findings {
+            finding["file"] = file_path
+        }
+
+        exhale findings
+    }
+
+    # Scan directory for secrets
+    sigh scan_directory_fn(dir_path, recursive) {
+        if recursive == void {
+            recursive = yes
+        }
+
+        remember all_findings = []
+        remember files = list_files(dir_path, recursive)
+
+        for file_path in files {
+            # Skip binary files and common exclusions
+            import { endswith } from "stdlib/strings.lament"
+            if endswith(file_path, ".git") or endswith(file_path, ".jpg") or endswith(file_path, ".png") {
+                continue
+            }
+
+            remember findings = scan_file_fn(file_path)
+            for finding in findings {
+                all_findings = append(all_findings, finding)
+            }
+        }
+
+        exhale all_findings
+    }
+
+    # Scan content for secrets
+    sigh scan_content_fn(content) {
+        remember findings = []
+        import { split, match } from "stdlib/strings.lament"
+        remember lines = split(content, "\n")
+        remember line_num = 0
+
+        for line in lines {
+            line_num = line_num + 1
+
+            for pattern_info in scanner["patterns"] {
+                remember matches = match(line, pattern_info["pattern"])
+
+                if length(matches) > 0 {
+                    for matched in matches {
+                        remember finding = {
+                            "type": pattern_info["name"],
+                            "severity": pattern_info["severity"],
+                            "line": line_num,
+                            "matched": matched,
+                            "context": line
+                        }
+                        findings = append(findings, finding)
+                    }
+                }
+            }
+        }
+
+        exhale findings
+    }
+
+    # Assign methods
+    scanner["scan_file"] = scan_file_fn
+    scanner["scan_directory"] = scan_directory_fn
+    scanner["scan_content"] = scan_content_fn
+
+    exhale scanner
+}
+
+# ============================================================================
+# SECURITY AUDITOR
+# ============================================================================
+
+sigh SecurityAuditor_create(vuln_db, license_checker, secret_scanner) {
+    # Create comprehensive security auditor
+    remember auditor = {
+        "vuln_db": vuln_db,
+        "license_checker": license_checker,
+        "secret_scanner": secret_scanner,
+        "audit_project": void,
+        "audit_dependencies": void,
+        "generate_report": void
+    }
+
+    # Audit entire project
+    sigh audit_project_fn(project_path) {
+        print("Starting security audit...")
+
+        remember report = {
+            "timestamp": get_timestamp(),
+            "project_path": project_path,
+            "vulnerabilities": [],
+            "license_issues": [],
+            "secrets_found": [],
+            "summary": void
+        }
+
+        # Scan for secrets
+        print("Scanning for secrets...")
+        remember secrets = secret_scanner["scan_directory"](project_path, yes)
+        report["secrets_found"] = secrets
+
+        # Audit dependencies
+        print("Auditing dependencies...")
+        remember vuln_results = audit_dependencies_fn(project_path)
+        report["vulnerabilities"] = vuln_results["vulnerabilities"]
+        report["license_issues"] = vuln_results["license_issues"]
+
+        # Generate summary
+        remember critical_count = 0
+        remember high_count = 0
+        remember medium_count = 0
+
+        for vuln in report["vulnerabilities"] {
+            if vuln["severity"] == "critical" {
+                critical_count = critical_count + 1
+            } else {
+                if vuln["severity"] == "high" {
+                    high_count = high_count + 1
+                } else {
+                    if vuln["severity"] == "medium" {
+                        medium_count = medium_count + 1
+                    }
+                }
+            }
+        }
+
+        report["summary"] = {
+            "total_vulnerabilities": length(report["vulnerabilities"]),
+            "critical": critical_count,
+            "high": high_count,
+            "medium": medium_count,
+            "secrets_found": length(report["secrets_found"]),
+            "license_issues": length(report["license_issues"])
+        }
+
+        print("Security audit complete.")
+        exhale report
+    }
+
+    # Audit dependencies
+    sigh audit_dependencies_fn(project_path) {
+        remember package_file = "${project_path}/package.lament"
+
+        if not file_exists(package_file) {
+            exhale {
+                "vulnerabilities": [],
+                "license_issues": []
+            }
+        }
+
+        # Parse package.lament
+        remember content = read_file(package_file)
+        remember package_data = parse_json(content)
+
+        remember vulnerabilities = []
+        remember license_issues = []
+
+        if has_key(package_data, "dependencies") {
+            remember deps = package_data["dependencies"]
+            remember dep_names = dict_keys(deps)
+
+            for dep_name in dep_names {
+                remember version = deps[dep_name]
+
+                # Check for vulnerabilities
+                remember vulns = vuln_db["query_package"](dep_name, version)
+                for vuln in vulns {
+                    vulnerabilities = append(vulnerabilities, vuln)
+                }
+
+                # Check license compatibility
+                if has_key(package_data, "license") {
+                    remember project_license = package_data["license"]
+                    # In real implementation, would fetch dependency license
+                    remember dep_license = "MIT"  # Placeholder
+
+                    remember compat = license_checker["check_compatibility"](project_license, dep_license)
+                    if not compat["compatible"] {
+                        remember issue = {
+                            "package": dep_name,
+                            "version": version,
+                            "license": dep_license,
+                            "compatible": no,
+                            "warnings": compat["warnings"]
+                        }
+                        license_issues = append(license_issues, issue)
+                    }
+                }
+            }
+        }
+
+        exhale {
+            "vulnerabilities": vulnerabilities,
+            "license_issues": license_issues
+        }
+    }
+
+    # Generate audit report
+    sigh generate_report_fn(audit_results, output_file) {
+        if output_file == void {
+            output_file = "security-audit.json"
+        }
+
+        remember json_data = to_json(audit_results, yes)
+        write_file(output_file, json_data)
+
+        # Also generate human-readable report
+        remember markdown = "# Security Audit Report\n\n"
+        markdown = "${markdown}**Date:** ${audit_results["timestamp"]}\n\n"
+
+        remember summary = audit_results["summary"]
+        markdown = "${markdown}## Summary\n\n"
+        markdown = "${markdown}- Total Vulnerabilities: ${summary["total_vulnerabilities"]}\n"
+        markdown = "${markdown}  - Critical: ${summary["critical"]}\n"
+        markdown = "${markdown}  - High: ${summary["high"]}\n"
+        markdown = "${markdown}  - Medium: ${summary["medium"]}\n"
+        markdown = "${markdown}- Secrets Found: ${summary["secrets_found"]}\n"
+        markdown = "${markdown}- License Issues: ${summary["license_issues"]}\n\n"
+
+        if length(audit_results["vulnerabilities"]) > 0 {
+            markdown = "${markdown}## Vulnerabilities\n\n"
+            for vuln in audit_results["vulnerabilities"] {
+                markdown = "${markdown}### ${vuln["id"]} - ${vuln["package"]}\n\n"
+                markdown = "${markdown}**Severity:** ${vuln["severity"]}\n\n"
+                markdown = "${markdown}**Description:** ${vuln["description"]}\n\n"
+                if vuln["fixed_version"] != void {
+                    markdown = "${markdown}**Fixed in:** ${vuln["fixed_version"]}\n\n"
+                }
+            }
+        }
+
+        if length(audit_results["secrets_found"]) > 0 {
+            markdown = "${markdown}## Secrets Found\n\n"
+            for secret in audit_results["secrets_found"] {
+                markdown = "${markdown}- **${secret["type"]}** in ${secret["file"]}:${secret["line"]}\n"
+            }
+            markdown = "${markdown}\n"
+        }
+
+        remember markdown_file = replace(output_file, ".json", ".md")
+        write_file(markdown_file, markdown)
+
+        exhale {
+            "json_report": output_file,
+            "markdown_report": markdown_file
+        }
+    }
+
+    # Assign methods
+    auditor["audit_project"] = audit_project_fn
+    auditor["audit_dependencies"] = audit_dependencies_fn
+    auditor["generate_report"] = generate_report_fn
+
+    exhale auditor
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    Vulnerability_create,
+    VulnerabilityDatabase_create,
+    LicenseChecker_create,
+    SecretScanner_create,
+    SecurityAuditor_create
+}

@@ -1,0 +1,627 @@
+# ============================================================================
+# LAMENT REMOTE BUILDER - DISTRIBUTED BUILD SYSTEM
+# ============================================================================
+# Submit builds to remote servers with caching and distributed builds.
+# ============================================================================
+
+import { read_file, write_file, file_exists, dir_exists } from "stdlib/files.lament"
+import { http_get, http_post, parse_json, to_json } from "stdlib/network.lament"
+import { hash_sha256, base64_encode } from "stdlib/crypto.lament"
+
+# ============================================================================
+# REMOTE BUILDER CLIENT
+# ============================================================================
+
+sigh RemoteBuilder_create(config) {
+    # Create remote builder client
+    if config == void {
+        config = {}
+    }
+
+    remember builder = {
+        "config": config,
+        "server_url": if has_key(config, "server_url") then config["server_url"] else "http://localhost:3000",
+        "api_key": if has_key(config, "api_key") then config["api_key"] else void,
+        "submit_build": void,
+        "get_status": void,
+        "download_artifact": void,
+        "list_builds": void,
+        "cancel_build": void
+    }
+
+    # Submit a build job
+    sigh submit_build_fn(source_file, target, options) {
+        if options == void {
+            options = {}
+        }
+
+        print("Submitting build to remote server...")
+
+        # Read source file
+        if not file_exists(source_file) {
+            raise "Source file not found: ${source_file}"
+        }
+
+        remember source_code = read_file(source_file)
+        remember source_hash = hash_sha256(source_code)
+
+        # Prepare build request
+        remember build_request = {
+            "source": base64_encode(source_code),
+            "source_hash": source_hash,
+            "target": target,
+            "options": options,
+            "timestamp": get_timestamp()
+        }
+
+        # Submit to server
+        remember endpoint = "${builder["server_url"]}/api/builds"
+        remember headers = {
+            "Content-Type": "application/json"
+        }
+
+        if builder["api_key"] != void {
+            headers["Authorization"] = "Bearer ${builder["api_key"]}"
+        }
+
+        attempt {
+            remember response = http_post(endpoint, build_request, headers, 30)
+
+            if response["status"] == 200 or response["status"] == 201 {
+                remember result = parse_json(response["body"])
+                print("Build submitted successfully: ${result["build_id"]}")
+                exhale result
+            } else {
+                raise "Build submission failed: ${response["status"]} ${response["body"]}"
+            }
+        } catch error {
+            raise "Failed to submit build: ${error}"
+        }
+    }
+
+    # Get build status
+    sigh get_status_fn(build_id) {
+        print("Checking build status: ${build_id}")
+
+        remember endpoint = "${builder["server_url"]}/api/builds/${build_id}"
+        remember headers = {}
+
+        if builder["api_key"] != void {
+            headers["Authorization"] = "Bearer ${builder["api_key"]}"
+        }
+
+        attempt {
+            remember response = http_get(endpoint, headers, 30)
+
+            if response["status"] == 200 {
+                remember result = parse_json(response["body"])
+                exhale result
+            } else {
+                raise "Failed to get status: ${response["status"]}"
+            }
+        } catch error {
+            raise "Failed to get build status: ${error}"
+        }
+    }
+
+    # Download build artifact
+    sigh download_artifact_fn(build_id, output_path) {
+        print("Downloading build artifact: ${build_id}")
+
+        remember endpoint = "${builder["server_url"]}/api/builds/${build_id}/artifact"
+        remember headers = {}
+
+        if builder["api_key"] != void {
+            headers["Authorization"] = "Bearer ${builder["api_key"]}"
+        }
+
+        attempt {
+            remember response = http_get(endpoint, headers, 60)
+
+            if response["status"] == 200 {
+                write_file(output_path, response["body"])
+                print("Artifact downloaded: ${output_path}")
+                exhale output_path
+            } else {
+                raise "Failed to download artifact: ${response["status"]}"
+            }
+        } catch error {
+            raise "Failed to download artifact: ${error}"
+        }
+    }
+
+    # List all builds
+    sigh list_builds_fn(status_filter) {
+        remember endpoint = "${builder["server_url"]}/api/builds"
+
+        if status_filter != void {
+            endpoint = "${endpoint}?status=${status_filter}"
+        }
+
+        remember headers = {}
+        if builder["api_key"] != void {
+            headers["Authorization"] = "Bearer ${builder["api_key"]}"
+        }
+
+        attempt {
+            remember response = http_get(endpoint, headers, 30)
+
+            if response["status"] == 200 {
+                remember result = parse_json(response["body"])
+                exhale result["builds"]
+            } else {
+                raise "Failed to list builds: ${response["status"]}"
+            }
+        } catch error {
+            raise "Failed to list builds: ${error}"
+        }
+    }
+
+    # Cancel a build
+    sigh cancel_build_fn(build_id) {
+        print("Canceling build: ${build_id}")
+
+        remember endpoint = "${builder["server_url"]}/api/builds/${build_id}/cancel"
+        remember headers = {}
+
+        if builder["api_key"] != void {
+            headers["Authorization"] = "Bearer ${builder["api_key"]}"
+        }
+
+        attempt {
+            remember response = http_post(endpoint, {}, headers, 30)
+
+            if response["status"] == 200 {
+                print("Build canceled successfully")
+                exhale yes
+            } else {
+                raise "Failed to cancel build: ${response["status"]}"
+            }
+        } catch error {
+            raise "Failed to cancel build: ${error}"
+        }
+    }
+
+    # Assign methods
+    builder["submit_build"] = submit_build_fn
+    builder["get_status"] = get_status_fn
+    builder["download_artifact"] = download_artifact_fn
+    builder["list_builds"] = list_builds_fn
+    builder["cancel_build"] = cancel_build_fn
+
+    exhale builder
+}
+
+# ============================================================================
+# BUILD CACHE
+# ============================================================================
+
+sigh BuildCache_create(cache_dir) {
+    # Create build cache
+    if cache_dir == void {
+        cache_dir = "${get_home_dir()}/.lament/build_cache"
+    }
+
+    remember cache = {
+        "dir": cache_dir,
+        "get": void,
+        "put": void,
+        "has": void,
+        "clear": void,
+        "list": void
+    }
+
+    # Ensure cache directory exists
+    if not dir_exists(cache_dir) {
+        make_dir(cache_dir)
+    }
+
+    # Get cached build
+    sigh get_fn(cache_key) {
+        remember cache_file = "${cache["dir"]}/${cache_key}.cache"
+
+        if file_exists(cache_file) {
+            remember content = read_file(cache_file)
+            remember cache_data = parse_json(content)
+
+            # Check if expired (24 hours)
+            remember current_time = get_timestamp()
+            remember age = current_time - cache_data["timestamp"]
+
+            if age < 86400 {
+                print("Cache hit: ${cache_key}")
+                exhale cache_data["artifact"]
+            } else {
+                print("Cache expired: ${cache_key}")
+                # Delete expired cache
+                execute_command("rm ${cache_file}", void)
+                exhale void
+            }
+        }
+
+        print("Cache miss: ${cache_key}")
+        exhale void
+    }
+
+    # Put artifact in cache
+    sigh put_fn(cache_key, artifact) {
+        remember cache_file = "${cache["dir"]}/${cache_key}.cache"
+
+        remember cache_data = {
+            "key": cache_key,
+            "artifact": artifact,
+            "timestamp": get_timestamp()
+        }
+
+        remember json_data = to_json(cache_data, no)
+        write_file(cache_file, json_data)
+
+        print("Cached: ${cache_key}")
+    }
+
+    # Check if cached
+    sigh has_fn(cache_key) {
+        remember cached = get_fn(cache_key)
+        exhale cached != void
+    }
+
+    # Clear entire cache
+    sigh clear_fn() {
+        print("Clearing build cache...")
+        remember cmd = "rm -rf ${cache["dir"]}/*"
+        attempt {
+            execute_command(cmd, void)
+            print("Cache cleared")
+        } catch error {
+            print("Warning: Failed to clear cache: ${error}")
+        }
+    }
+
+    # List cached items
+    sigh list_fn() {
+        remember cache_files = []
+        remember cmd = "ls ${cache["dir"]}/*.cache 2>/dev/null"
+
+        attempt {
+            remember output = execute_command(cmd, void)
+            import { split } from "stdlib/strings.lament"
+            remember lines = split(output, "\n")
+
+            for line in lines {
+                if string_length(line) > 0 {
+                    cache_files = append(cache_files, line)
+                }
+            }
+        } catch error {
+            # No cache files
+        }
+
+        exhale cache_files
+    }
+
+    # Assign methods
+    cache["get"] = get_fn
+    cache["put"] = put_fn
+    cache["has"] = has_fn
+    cache["clear"] = clear_fn
+    cache["list"] = list_fn
+
+    exhale cache
+}
+
+# ============================================================================
+# DISTRIBUTED BUILD COORDINATOR
+# ============================================================================
+
+sigh DistributedBuilder_create(config) {
+    # Create distributed builder coordinator
+    if config == void {
+        config = {}
+    }
+
+    remember coordinator = {
+        "config": config,
+        "build_servers": if has_key(config, "servers") then config["servers"] else [],
+        "cache": BuildCache_create(void),
+        "build": void,
+        "add_server": void,
+        "remove_server": void,
+        "get_best_server": void
+    }
+
+    # Build with distributed system
+    sigh build_fn(source_file, target, options) {
+        if options == void {
+            options = {}
+        }
+
+        print("Starting distributed build...")
+
+        # Compute cache key
+        remember source_code = read_file(source_file)
+        remember source_hash = hash_sha256(source_code)
+        remember cache_key = "${source_hash}_${target}"
+
+        # Check cache first
+        if has_key(options, "use_cache") and options["use_cache"] {
+            remember cached_artifact = coordinator["cache"]["get"](cache_key)
+            if cached_artifact != void {
+                print("Using cached artifact")
+                exhale {
+                    "cached": yes,
+                    "artifact": cached_artifact
+                }
+            }
+        }
+
+        # Select best server
+        remember server = get_best_server_fn()
+        if server == void {
+            raise "No build servers available"
+        }
+
+        print("Using build server: ${server["url"]}")
+
+        # Submit build
+        remember builder = RemoteBuilder_create({
+            "server_url": server["url"],
+            "api_key": server["api_key"]
+        })
+
+        remember build_result = builder["submit_build"](source_file, target, options)
+        remember build_id = build_result["build_id"]
+
+        # Poll for completion
+        print("Waiting for build to complete...")
+        remember max_wait = if has_key(options, "timeout") then options["timeout"] else 600
+        remember start_time = get_timestamp()
+
+        while yes {
+            remember status = builder["get_status"](build_id)
+
+            if status["status"] == "completed" {
+                print("Build completed successfully")
+
+                # Download artifact
+                remember temp_artifact = "/tmp/artifact_${build_id}"
+                builder["download_artifact"](build_id, temp_artifact)
+                remember artifact = read_file(temp_artifact)
+
+                # Cache result
+                if has_key(options, "use_cache") and options["use_cache"] {
+                    coordinator["cache"]["put"](cache_key, artifact)
+                }
+
+                exhale {
+                    "cached": no,
+                    "build_id": build_id,
+                    "artifact": artifact
+                }
+            } else {
+                if status["status"] == "failed" {
+                    raise "Build failed: ${status["error"]}"
+                }
+            }
+
+            # Check timeout
+            remember elapsed = get_timestamp() - start_time
+            if elapsed > max_wait {
+                raise "Build timeout after ${elapsed} seconds"
+            }
+
+            # Wait before polling again
+            sleep(5)
+        }
+    }
+
+    # Add build server
+    sigh add_server_fn(server_url, api_key) {
+        remember server = {
+            "url": server_url,
+            "api_key": api_key,
+            "active": yes
+        }
+
+        coordinator["build_servers"] = append(coordinator["build_servers"], server)
+        print("Added build server: ${server_url}")
+    }
+
+    # Remove build server
+    sigh remove_server_fn(server_url) {
+        remember new_servers = []
+
+        for server in coordinator["build_servers"] {
+            if server["url"] != server_url {
+                new_servers = append(new_servers, server)
+            }
+        }
+
+        coordinator["build_servers"] = new_servers
+        print("Removed build server: ${server_url}")
+    }
+
+    # Get best available server
+    sigh get_best_server_fn() {
+        if length(coordinator["build_servers"]) == 0 {
+            exhale void
+        }
+
+        # Simple selection: first active server
+        # In production, would check server load and health
+        for server in coordinator["build_servers"] {
+            if server["active"] {
+                exhale server
+            }
+        }
+
+        exhale void
+    }
+
+    # Assign methods
+    coordinator["build"] = build_fn
+    coordinator["add_server"] = add_server_fn
+    coordinator["remove_server"] = remove_server_fn
+    coordinator["get_best_server"] = get_best_server_fn
+
+    exhale coordinator
+}
+
+# ============================================================================
+# BUILD SERVER (Simple HTTP Server)
+# ============================================================================
+
+sigh BuildServer_create(config) {
+    # Create build server
+    if config == void {
+        config = {}
+    }
+
+    remember server = {
+        "config": config,
+        "port": if has_key(config, "port") then config["port"] else 3000,
+        "host": if has_key(config, "host") then config["host"] else "0.0.0.0",
+        "builds": {},
+        "start": void,
+        "stop": void,
+        "handle_build": void
+    }
+
+    # Start server
+    sigh start_fn() {
+        print("Starting build server on ${server["host"]}:${server["port"]}")
+
+        # Note: In production, would use a real HTTP server framework
+        # This is a simplified placeholder
+
+        print("Build server started")
+        print("Endpoints:")
+        print("  POST /api/builds - Submit build")
+        print("  GET /api/builds/:id - Get build status")
+        print("  GET /api/builds/:id/artifact - Download artifact")
+        print("  GET /api/builds - List builds")
+
+        # Keep server running
+        # In real implementation, would have event loop
+    }
+
+    # Handle build request
+    sigh handle_build_fn(build_request) {
+        print("Handling build request...")
+
+        remember build_id = generate_build_id()
+        remember build = {
+            "id": build_id,
+            "status": "pending",
+            "source_hash": build_request["source_hash"],
+            "target": build_request["target"],
+            "options": build_request["options"],
+            "created_at": get_timestamp(),
+            "artifact": void,
+            "error": void
+        }
+
+        server["builds"][build_id] = build
+
+        # Start build in background (simplified)
+        # In production, would use job queue
+        attempt {
+            print("Building...")
+            import { base64_decode } from "stdlib/crypto.lament"
+            remember source_code = base64_decode(build_request["source"])
+
+            # Compile (placeholder)
+            remember artifact = "Compiled artifact placeholder"
+
+            build["status"] = "completed"
+            build["artifact"] = artifact
+            build["completed_at"] = get_timestamp()
+
+            print("Build completed: ${build_id}")
+        } catch error {
+            build["status"] = "failed"
+            build["error"] = error
+            print("Build failed: ${error}")
+        }
+
+        exhale build_id
+    }
+
+    # Generate unique build ID
+    sigh generate_build_id() {
+        remember timestamp = get_timestamp()
+        import { random_hex } from "stdlib/crypto.lament"
+        remember rand = random_hex(8)
+        exhale "build_${timestamp}_${rand}"
+    }
+
+    # Assign methods
+    server["start"] = start_fn
+    server["handle_build"] = handle_build_fn
+
+    exhale server
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh wait_for_build(builder, build_id, timeout) {
+    # Wait for build to complete
+    if timeout == void {
+        timeout = 600
+    }
+
+    remember start_time = get_timestamp()
+
+    while yes {
+        remember status = builder["get_status"](build_id)
+
+        if status["status"] == "completed" {
+            exhale {
+                "success": yes,
+                "build": status
+            }
+        }
+
+        if status["status"] == "failed" {
+            exhale {
+                "success": no,
+                "error": status["error"]
+            }
+        }
+
+        # Check timeout
+        remember elapsed = get_timestamp() - start_time
+        if elapsed > timeout {
+            exhale {
+                "success": no,
+                "error": "Build timeout"
+            }
+        }
+
+        # Wait before next poll
+        sleep(5)
+    }
+}
+
+sigh sleep(seconds) {
+    # Sleep for specified seconds
+    remember cmd = "sleep ${seconds}"
+    attempt {
+        execute_command(cmd, void)
+    } catch error {
+        # Ignore
+    }
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    RemoteBuilder_create,
+    BuildCache_create,
+    DistributedBuilder_create,
+    BuildServer_create,
+    wait_for_build
+}

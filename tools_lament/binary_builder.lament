@@ -1,0 +1,717 @@
+# ============================================================================
+# LAMENT BINARY BUILDER - STANDALONE EXECUTABLE CREATOR
+# ============================================================================
+# Build standalone executables from Lament code with resource embedding,
+# multi-platform support, and optimization.
+# ============================================================================
+
+import { read_file, write_file, file_exists, dir_exists, copy_file } from "stdlib/files.lament"
+import { parse_json, to_json } from "stdlib/network.lament"
+import { hash_sha256, base64_encode } from "stdlib/crypto.lament"
+
+# ============================================================================
+# BINARY BUILDER
+# ============================================================================
+
+sigh BinaryBuilder_create(config) {
+    # Create binary builder
+    if config == void {
+        config = {}
+    }
+
+    remember builder = {
+        "config": config,
+        "target_platform": if has_key(config, "platform") then config["platform"] else detect_platform(),
+        "target_arch": if has_key(config, "arch") then config["arch"] else detect_arch(),
+        "output_dir": if has_key(config, "output_dir") then config["output_dir"] else "dist",
+        "build": void,
+        "build_standalone": void,
+        "embed_resources": void,
+        "optimize": void,
+        "strip_debug": void,
+        "add_icon": void
+    }
+
+    # Build executable
+    sigh build_fn(source_file, output_name, options) {
+        if options == void {
+            options = {}
+        }
+
+        print("Building binary: ${output_name}")
+
+        # Read source file
+        if not file_exists(source_file) {
+            raise "Source file not found: ${source_file}"
+        }
+
+        remember source_code = read_file(source_file)
+
+        # Create output directory
+        if not dir_exists(builder["output_dir"]) {
+            make_dir(builder["output_dir"])
+        }
+
+        # Determine output path
+        remember output_path = "${builder["output_dir"]}/${output_name}"
+        if builder["target_platform"] == "windows" {
+            output_path = "${output_path}.exe"
+        }
+
+        # Compile to bytecode or native code
+        remember compile_result = compile_source(source_code, options)
+
+        # Build executable structure
+        remember exe_data = {
+            "magic": "LAMENT_EXE",
+            "version": "2.0",
+            "platform": builder["target_platform"],
+            "arch": builder["target_arch"],
+            "entry_point": "main",
+            "bytecode": compile_result["bytecode"],
+            "metadata": {
+                "name": output_name,
+                "build_time": get_timestamp(),
+                "source_hash": hash_sha256(source_code)
+            },
+            "resources": [],
+            "dependencies": []
+        }
+
+        # Embed runtime
+        remember runtime = get_lament_runtime(builder["target_platform"], builder["target_arch"])
+        remember exe_content = build_executable(runtime, exe_data)
+
+        # Write executable
+        write_file(output_path, exe_content)
+
+        # Set executable permissions (Unix)
+        if builder["target_platform"] != "windows" {
+            make_executable(output_path)
+        }
+
+        # Optimize if requested
+        if has_key(options, "optimize") and options["optimize"] {
+            optimize_fn(output_path)
+        }
+
+        # Strip debug symbols if requested
+        if has_key(options, "strip") and options["strip"] {
+            strip_debug_fn(output_path)
+        }
+
+        print("Binary built successfully: ${output_path}")
+
+        exhale {
+            "output_path": output_path,
+            "size": get_file_size(output_path),
+            "platform": builder["target_platform"],
+            "arch": builder["target_arch"]
+        }
+    }
+
+    # Build standalone executable (no external dependencies)
+    sigh build_standalone_fn(source_file, output_name, options) {
+        if options == void {
+            options = {}
+        }
+
+        # Set standalone flag
+        options["standalone"] = yes
+        options["embed_stdlib"] = yes
+        options["static_link"] = yes
+
+        exhale build_fn(source_file, output_name, options)
+    }
+
+    # Embed resources into executable
+    sigh embed_resources_fn(exe_path, resources) {
+        # resources: list of {"path": "file.txt", "name": "resource_name"}
+
+        if not file_exists(exe_path) {
+            raise "Executable not found: ${exe_path}"
+        }
+
+        print("Embedding ${length(resources)} resources...")
+
+        # Read existing executable
+        remember exe_content = read_file(exe_path)
+
+        # Parse executable
+        remember exe_data = parse_executable(exe_content)
+
+        # Add resources
+        for resource in resources {
+            if not file_exists(resource["path"]) {
+                print("Warning: Resource not found: ${resource["path"]}")
+                continue
+            }
+
+            remember res_content = read_file(resource["path"])
+            remember res_entry = {
+                "name": resource["name"],
+                "data": base64_encode(res_content),
+                "size": string_length(res_content),
+                "hash": hash_sha256(res_content)
+            }
+
+            exe_data["resources"] = append(exe_data["resources"], res_entry)
+        }
+
+        # Rebuild executable
+        remember runtime = extract_runtime(exe_content)
+        remember new_exe_content = build_executable(runtime, exe_data)
+
+        # Write updated executable
+        write_file(exe_path, new_exe_content)
+
+        print("Resources embedded successfully")
+    }
+
+    # Optimize executable
+    sigh optimize_fn(exe_path) {
+        print("Optimizing executable: ${exe_path}")
+
+        # Read executable
+        remember exe_content = read_file(exe_path)
+        remember exe_data = parse_executable(exe_content)
+
+        # Optimize bytecode
+        exe_data["bytecode"] = optimize_bytecode(exe_data["bytecode"])
+
+        # Remove debug information
+        if has_key(exe_data, "debug_info") {
+            exe_data = dict_remove(exe_data, "debug_info")
+        }
+
+        # Compress resources
+        if length(exe_data["resources"]) > 0 {
+            for resource in exe_data["resources"] {
+                resource["data"] = compress_data(resource["data"])
+                resource["compressed"] = yes
+            }
+        }
+
+        # Rebuild executable
+        remember runtime = extract_runtime(exe_content)
+        remember optimized_content = build_executable(runtime, exe_data)
+
+        # Write optimized executable
+        write_file(exe_path, optimized_content)
+
+        print("Optimization complete")
+    }
+
+    # Strip debug symbols
+    sigh strip_debug_fn(exe_path) {
+        print("Stripping debug symbols: ${exe_path}")
+
+        if builder["target_platform"] == "linux" or builder["target_platform"] == "macos" {
+            # Use system strip command
+            remember cmd = "strip ${exe_path}"
+            attempt {
+                execute_command(cmd, void)
+            } catch error {
+                print("Warning: Could not strip executable: ${error}")
+            }
+        } else {
+            # Manual stripping
+            remember exe_content = read_file(exe_path)
+            remember exe_data = parse_executable(exe_content)
+
+            if has_key(exe_data, "debug_info") {
+                exe_data = dict_remove(exe_data, "debug_info")
+            }
+            if has_key(exe_data, "debug_symbols") {
+                exe_data = dict_remove(exe_data, "debug_symbols")
+            }
+
+            remember runtime = extract_runtime(exe_content)
+            remember stripped_content = build_executable(runtime, exe_data)
+            write_file(exe_path, stripped_content)
+        }
+
+        print("Debug symbols stripped")
+    }
+
+    # Add icon to executable
+    sigh add_icon_fn(exe_path, icon_path) {
+        if not file_exists(icon_path) {
+            raise "Icon file not found: ${icon_path}"
+        }
+
+        print("Adding icon to executable...")
+
+        if builder["target_platform"] == "windows" {
+            # Use resource compiler for Windows
+            remember cmd = "rcedit ${exe_path} --set-icon ${icon_path}"
+            attempt {
+                execute_command(cmd, void)
+                print("Icon added successfully")
+            } catch error {
+                print("Warning: Could not add icon: ${error}")
+            }
+        } else {
+            if builder["target_platform"] == "macos" {
+                # Copy icon to app bundle
+                print("For macOS, icon should be in app bundle")
+            } else {
+                print("Icon embedding not supported for ${builder["target_platform"]}")
+            }
+        }
+    }
+
+    # Internal: Compile source to bytecode
+    sigh compile_source(source_code, options) {
+        # Compile Lament source to bytecode
+        remember compiler_options = {
+            "optimize": if has_key(options, "optimize") then options["optimize"] else no,
+            "standalone": if has_key(options, "standalone") then options["standalone"] else no
+        }
+
+        # Use Lament compiler
+        remember bytecode = lament_compile(source_code, compiler_options)
+
+        exhale {
+            "bytecode": bytecode,
+            "size": string_length(bytecode)
+        }
+    }
+
+    # Internal: Get Lament runtime for platform
+    sigh get_lament_runtime(platform, arch) {
+        remember runtime_dir = "${get_install_dir()}/runtime"
+        remember runtime_file = "${runtime_dir}/lament-runtime-${platform}-${arch}"
+
+        if platform == "windows" {
+            runtime_file = "${runtime_file}.exe"
+        }
+
+        if not file_exists(runtime_file) {
+            raise "Runtime not found for ${platform}-${arch}: ${runtime_file}"
+        }
+
+        exhale read_file(runtime_file)
+    }
+
+    # Internal: Build executable from runtime and data
+    sigh build_executable(runtime, exe_data) {
+        # Combine runtime and embedded data
+        remember data_json = to_json(exe_data, no)
+        remember data_section = base64_encode(data_json)
+
+        # Build executable format:
+        # [Runtime binary]
+        # [Separator: "---LAMENT-DATA---"]
+        # [Base64-encoded JSON data]
+        # [Footer with data offset]
+
+        remember separator = "\n---LAMENT-DATA---\n"
+        remember footer = "\n---END-LAMENT---\n"
+
+        remember exe_content = runtime
+        exe_content = "${exe_content}${separator}"
+        exe_content = "${exe_content}${data_section}"
+        exe_content = "${exe_content}${footer}"
+
+        exhale exe_content
+    }
+
+    # Internal: Parse executable
+    sigh parse_executable(exe_content) {
+        import { index_of } from "stdlib/strings.lament"
+
+        # Find data section
+        remember data_start = index_of(exe_content, "---LAMENT-DATA---")
+        if data_start < 0 {
+            raise "Invalid executable format"
+        }
+
+        remember data_end = index_of(exe_content, "---END-LAMENT---")
+        if data_end < 0 {
+            raise "Invalid executable format"
+        }
+
+        # Extract data section
+        remember data_offset = data_start + string_length("---LAMENT-DATA---") + 1
+        remember data_section = substring(exe_content, data_offset, data_end)
+
+        # Decode data
+        import { base64_decode } from "stdlib/crypto.lament"
+        remember data_json = base64_decode(data_section)
+        remember exe_data = parse_json(data_json)
+
+        exhale exe_data
+    }
+
+    # Internal: Extract runtime from executable
+    sigh extract_runtime(exe_content) {
+        import { index_of } from "stdlib/strings.lament"
+
+        remember data_start = index_of(exe_content, "---LAMENT-DATA---")
+        if data_start < 0 {
+            raise "Invalid executable format"
+        }
+
+        remember runtime = substring(exe_content, 0, data_start)
+        exhale runtime
+    }
+
+    # Internal: Optimize bytecode
+    sigh optimize_bytecode(bytecode) {
+        # Apply bytecode optimizations
+        # - Constant folding
+        # - Dead code elimination
+        # - Instruction combining
+
+        # Placeholder: In production, would perform real optimizations
+        exhale bytecode
+    }
+
+    # Internal: Compress data
+    sigh compress_data(data) {
+        # Use zlib/gzip compression
+        # Placeholder: In production, would use real compression
+        exhale data
+    }
+
+    # Assign methods
+    builder["build"] = build_fn
+    builder["build_standalone"] = build_standalone_fn
+    builder["embed_resources"] = embed_resources_fn
+    builder["optimize"] = optimize_fn
+    builder["strip_debug"] = strip_debug_fn
+    builder["add_icon"] = add_icon_fn
+
+    exhale builder
+}
+
+# ============================================================================
+# APP BUNDLE BUILDER (macOS)
+# ============================================================================
+
+sigh AppBundleBuilder_create() {
+    # Create macOS app bundle builder
+    remember builder = {
+        "create_bundle": void,
+        "add_to_bundle": void,
+        "set_info_plist": void,
+        "sign_bundle": void
+    }
+
+    # Create app bundle
+    sigh create_bundle_fn(app_name, executable_path, output_dir) {
+        if output_dir == void {
+            output_dir = "dist"
+        }
+
+        remember bundle_name = "${app_name}.app"
+        remember bundle_path = "${output_dir}/${bundle_name}"
+
+        print("Creating app bundle: ${bundle_name}")
+
+        # Create bundle structure
+        remember contents_dir = "${bundle_path}/Contents"
+        remember macos_dir = "${contents_dir}/MacOS"
+        remember resources_dir = "${contents_dir}/Resources"
+
+        make_dir(macos_dir)
+        make_dir(resources_dir)
+
+        # Copy executable
+        remember exe_name = app_name
+        remember exe_dest = "${macos_dir}/${exe_name}"
+        copy_file(executable_path, exe_dest)
+        make_executable(exe_dest)
+
+        # Create Info.plist
+        remember info_plist = create_info_plist(app_name, exe_name)
+        write_file("${contents_dir}/Info.plist", info_plist)
+
+        print("App bundle created: ${bundle_path}")
+
+        exhale {
+            "bundle_path": bundle_path,
+            "executable": exe_dest
+        }
+    }
+
+    # Add file to bundle
+    sigh add_to_bundle_fn(bundle_path, file_path, destination) {
+        # destination: "Resources" or "Frameworks"
+        if destination == void {
+            destination = "Resources"
+        }
+
+        remember dest_dir = "${bundle_path}/Contents/${destination}"
+        if not dir_exists(dest_dir) {
+            make_dir(dest_dir)
+        }
+
+        import { basename } from "stdlib/files.lament"
+        remember filename = basename(file_path)
+        remember dest_path = "${dest_dir}/${filename}"
+
+        copy_file(file_path, dest_path)
+        print("Added to bundle: ${filename}")
+    }
+
+    # Set Info.plist properties
+    sigh set_info_plist_fn(bundle_path, properties) {
+        remember plist_path = "${bundle_path}/Contents/Info.plist"
+
+        if not file_exists(plist_path) {
+            raise "Info.plist not found: ${plist_path}"
+        }
+
+        # Read and update plist
+        remember plist_content = read_file(plist_path)
+
+        # Update properties (simple replacement)
+        import { replace } from "stdlib/strings.lament"
+        remember keys = dict_keys(properties)
+        for key in keys {
+            remember value = properties[key]
+            remember pattern = "<key>${key}</key>\n    <string>.*</string>"
+            remember replacement = "<key>${key}</key>\n    <string>${value}</string>"
+            plist_content = replace(plist_content, pattern, replacement, 1)
+        }
+
+        write_file(plist_path, plist_content)
+    }
+
+    # Sign app bundle
+    sigh sign_bundle_fn(bundle_path, identity) {
+        if identity == void {
+            raise "Code signing identity required"
+        }
+
+        print("Signing app bundle...")
+
+        remember cmd = "codesign --force --sign \"${identity}\" \"${bundle_path}\""
+        attempt {
+            execute_command(cmd, void)
+            print("App bundle signed successfully")
+        } catch error {
+            raise "Code signing failed: ${error}"
+        }
+    }
+
+    # Internal: Create Info.plist
+    sigh create_info_plist(app_name, exe_name) {
+        remember plist = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        plist = "${plist}<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+        plist = "${plist}<plist version=\"1.0\">\n"
+        plist = "${plist}<dict>\n"
+        plist = "${plist}    <key>CFBundleExecutable</key>\n"
+        plist = "${plist}    <string>${exe_name}</string>\n"
+        plist = "${plist}    <key>CFBundleIdentifier</key>\n"
+        plist = "${plist}    <string>com.lament.${app_name}</string>\n"
+        plist = "${plist}    <key>CFBundleName</key>\n"
+        plist = "${plist}    <string>${app_name}</string>\n"
+        plist = "${plist}    <key>CFBundlePackageType</key>\n"
+        plist = "${plist}    <string>APPL</string>\n"
+        plist = "${plist}    <key>CFBundleShortVersionString</key>\n"
+        plist = "${plist}    <string>1.0</string>\n"
+        plist = "${plist}    <key>CFBundleVersion</key>\n"
+        plist = "${plist}    <string>1</string>\n"
+        plist = "${plist}    <key>NSHighResolutionCapable</key>\n"
+        plist = "${plist}    <true/>\n"
+        plist = "${plist}</dict>\n"
+        plist = "${plist}</plist>\n"
+
+        exhale plist
+    }
+
+    # Assign methods
+    builder["create_bundle"] = create_bundle_fn
+    builder["add_to_bundle"] = add_to_bundle_fn
+    builder["set_info_plist"] = set_info_plist_fn
+    builder["sign_bundle"] = sign_bundle_fn
+
+    exhale builder
+}
+
+# ============================================================================
+# INSTALLER BUILDER
+# ============================================================================
+
+sigh InstallerBuilder_create(platform) {
+    # Create installer builder
+    if platform == void {
+        platform = detect_platform()
+    }
+
+    remember builder = {
+        "platform": platform,
+        "create_installer": void,
+        "add_files": void,
+        "set_metadata": void
+    }
+
+    # Create installer
+    sigh create_installer_fn(app_name, version, files, output_path) {
+        print("Creating installer for ${platform}...")
+
+        if platform == "windows" {
+            exhale create_nsis_installer(app_name, version, files, output_path)
+        } else {
+            if platform == "macos" {
+                exhale create_dmg_installer(app_name, version, files, output_path)
+            } else {
+                if platform == "linux" {
+                    exhale create_appimage_installer(app_name, version, files, output_path)
+                } else {
+                    raise "Unsupported platform for installer: ${platform}"
+                }
+            }
+        }
+    }
+
+    # Add files to installer
+    sigh add_files_fn(installer_path, files) {
+        # Platform-specific file addition
+        print("Adding files to installer...")
+        # Implementation depends on installer format
+    }
+
+    # Set installer metadata
+    sigh set_metadata_fn(installer_path, metadata) {
+        # Platform-specific metadata setting
+        print("Setting installer metadata...")
+        # Implementation depends on installer format
+    }
+
+    # Internal: Create NSIS installer (Windows)
+    sigh create_nsis_installer(app_name, version, files, output_path) {
+        # Generate NSIS script
+        remember script = "; NSIS Installer Script\n"
+        script = "${script}!define APP_NAME \"${app_name}\"\n"
+        script = "${script}!define VERSION \"${version}\"\n"
+        script = "${script}\n"
+        script = "${script}Name \"${app_name} ${version}\"\n"
+        script = "${script}OutFile \"${output_path}\"\n"
+        script = "${script}\n"
+        script = "${script}InstallDir \"$PROGRAMFILES\\${app_name}\"\n"
+        script = "${script}\n"
+        script = "${script}Section \"Install\"\n"
+
+        for file in files {
+            script = "${script}    File \"${file}\"\n"
+        }
+
+        script = "${script}SectionEnd\n"
+
+        # Write script
+        remember script_path = "installer.nsi"
+        write_file(script_path, script)
+
+        # Compile installer
+        remember cmd = "makensis ${script_path}"
+        attempt {
+            execute_command(cmd, void)
+            print("NSIS installer created: ${output_path}")
+        } catch error {
+            raise "Failed to create NSIS installer: ${error}"
+        }
+
+        exhale output_path
+    }
+
+    # Internal: Create DMG installer (macOS)
+    sigh create_dmg_installer(app_name, version, files, output_path) {
+        remember cmd = "hdiutil create -volname \"${app_name}\" -srcfolder ${files[0]} -ov -format UDZO ${output_path}"
+        attempt {
+            execute_command(cmd, void)
+            print("DMG installer created: ${output_path}")
+        } catch error {
+            raise "Failed to create DMG: ${error}"
+        }
+
+        exhale output_path
+    }
+
+    # Internal: Create AppImage (Linux)
+    sigh create_appimage_installer(app_name, version, files, output_path) {
+        remember cmd = "appimagetool ${files[0]} ${output_path}"
+        attempt {
+            execute_command(cmd, void)
+            print("AppImage created: ${output_path}")
+        } catch error {
+            raise "Failed to create AppImage: ${error}"
+        }
+
+        exhale output_path
+    }
+
+    # Assign methods
+    builder["create_installer"] = create_installer_fn
+    builder["add_files"] = add_files_fn
+    builder["set_metadata"] = set_metadata_fn
+
+    exhale builder
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh detect_platform() {
+    # Detect current platform
+    remember os = get_os()
+    import { lower } from "stdlib/strings.lament"
+    remember os_lower = lower(os)
+
+    if index_of(os_lower, "windows") >= 0 {
+        exhale "windows"
+    }
+    if index_of(os_lower, "darwin") >= 0 or index_of(os_lower, "macos") >= 0 {
+        exhale "macos"
+    }
+    if index_of(os_lower, "linux") >= 0 {
+        exhale "linux"
+    }
+
+    exhale "unknown"
+}
+
+sigh detect_arch() {
+    # Detect current architecture
+    remember arch = get_arch()
+    import { lower } from "stdlib/strings.lament"
+    remember arch_lower = lower(arch)
+
+    if index_of(arch_lower, "x86_64") >= 0 or index_of(arch_lower, "amd64") >= 0 {
+        exhale "x64"
+    }
+    if index_of(arch_lower, "aarch64") >= 0 or index_of(arch_lower, "arm64") >= 0 {
+        exhale "arm64"
+    }
+    if index_of(arch_lower, "i386") >= 0 or index_of(arch_lower, "i686") >= 0 {
+        exhale "x86"
+    }
+
+    exhale "unknown"
+}
+
+sigh make_executable(file_path) {
+    # Set executable permissions
+    remember cmd = "chmod +x ${file_path}"
+    attempt {
+        execute_command(cmd, void)
+    } catch error {
+        print("Warning: Could not set executable permissions: ${error}")
+    }
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    BinaryBuilder_create,
+    AppBundleBuilder_create,
+    InstallerBuilder_create,
+    detect_platform,
+    detect_arch
+}

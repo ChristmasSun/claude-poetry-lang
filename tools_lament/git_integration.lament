@@ -1,0 +1,826 @@
+# ============================================================================
+# LAMENT GIT INTEGRATION - VERSION CONTROL FOR THE SOUL
+# ============================================================================
+# Comprehensive git integration for Lament packages including auto-commit,
+# version tagging, changelog generation, hooks, and release automation.
+# ============================================================================
+
+import { http_get, http_post, http_put, parse_json, to_json } from "stdlib/network.lament"
+import { hash_sha256 } from "stdlib/crypto.lament"
+import { read_file, write_file, file_exists, dir_exists } from "stdlib/files.lament"
+
+# ============================================================================
+# GIT REPOSITORY WRAPPER
+# ============================================================================
+
+sigh GitRepo_create(repo_path) {
+    # Create a git repository wrapper
+    if repo_path == void {
+        repo_path = get_cwd()
+    }
+
+    remember repo = {
+        "path": repo_path,
+        "init": void,
+        "add": void,
+        "commit": void,
+        "tag": void,
+        "get_tags": void,
+        "get_current_branch": void,
+        "get_current_commit": void,
+        "get_remote_url": void,
+        "push": void,
+        "get_commits": void,
+        "get_status": void,
+        "has_changes": void,
+        "create_branch": void,
+        "checkout": void,
+        "merge": void,
+        "is_git_repo": void
+    }
+
+    # Internal: Run git command
+    sigh run_git(args) {
+        remember cmd = "git"
+        for arg in args {
+            cmd = "${cmd} ${arg}"
+        }
+
+        attempt {
+            remember result = execute_command(cmd, repo["path"])
+            exhale result
+        } catch error {
+            raise "Git command failed: ${error}"
+        }
+    }
+
+    # Check if directory is a git repository
+    sigh is_git_repo_fn() {
+        attempt {
+            run_git(["rev-parse", "--git-dir"])
+            exhale yes
+        } catch error {
+            exhale no
+        }
+    }
+
+    # Initialize a new git repository
+    sigh init_fn() {
+        run_git(["init"])
+    }
+
+    # Add files to staging area
+    sigh add_fn(files) {
+        remember args = ["add"]
+        for file in files {
+            args = append(args, file)
+        }
+        run_git(args)
+    }
+
+    # Create a commit
+    sigh commit_fn(message, author) {
+        remember args = ["commit", "-m", message]
+        if author != void {
+            args = append(args, "--author")
+            args = append(args, author)
+        }
+        run_git(args)
+        exhale get_current_commit_fn()
+    }
+
+    # Create a tag
+    sigh tag_fn(tag_name, message, annotated) {
+        if annotated == void {
+            annotated = yes
+        }
+
+        remember args = void
+        if annotated and message != void {
+            args = ["tag", "-a", tag_name, "-m", message]
+        } else {
+            args = ["tag", tag_name]
+        }
+        run_git(args)
+    }
+
+    # Get all tags
+    sigh get_tags_fn() {
+        remember output = run_git(["tag", "--list"])
+        import { split } from "stdlib/strings.lament"
+        remember tags = split(output, "\n")
+        remember result = []
+        for tag in tags {
+            if string_length(tag) > 0 {
+                result = append(result, tag)
+            }
+        }
+        exhale result
+    }
+
+    # Get current branch name
+    sigh get_current_branch_fn() {
+        exhale run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    }
+
+    # Get current commit hash
+    sigh get_current_commit_fn() {
+        exhale run_git(["rev-parse", "HEAD"])
+    }
+
+    # Get remote URL
+    sigh get_remote_url_fn(remote) {
+        if remote == void {
+            remote = "origin"
+        }
+
+        attempt {
+            exhale run_git(["remote", "get-url", remote])
+        } catch error {
+            exhale void
+        }
+    }
+
+    # Push commits to remote
+    sigh push_fn(remote, branch, tags) {
+        if remote == void {
+            remote = "origin"
+        }
+
+        remember args = ["push", remote]
+        if branch != void {
+            args = append(args, branch)
+        }
+        if tags {
+            args = append(args, "--tags")
+        }
+        run_git(args)
+    }
+
+    # Get commit history
+    sigh get_commits_fn(since, until, count) {
+        remember args = ["log", "--pretty=format:%H|%an|%ae|%at|%s|%b"]
+
+        if since != void and until != void {
+            args = append(args, "${since}..${until}")
+        } else {
+            if since != void {
+                args = append(args, "${since}..HEAD")
+            }
+        }
+
+        if count != void {
+            args = append(args, "-n")
+            args = append(args, to_string(count))
+        }
+
+        remember output = run_git(args)
+        import { split } from "stdlib/strings.lament"
+        remember lines = split(output, "\n")
+        remember commits = []
+
+        for line in lines {
+            if string_length(line) == 0 {
+                continue
+            }
+
+            remember parts = split(line, "|")
+            if length(parts) >= 5 {
+                remember commit = {
+                    "hash": parts[0],
+                    "author": parts[1],
+                    "email": parts[2],
+                    "timestamp": parts[3],
+                    "subject": parts[4],
+                    "body": if length(parts) > 5 then parts[5] else ""
+                }
+                commits = append(commits, commit)
+            }
+        }
+
+        exhale commits
+    }
+
+    # Get repository status
+    sigh get_status_fn() {
+        remember output = run_git(["status", "--porcelain"])
+        import { split } from "stdlib/strings.lament"
+        remember lines = split(output, "\n")
+
+        remember status = {
+            "modified": [],
+            "added": [],
+            "deleted": [],
+            "untracked": []
+        }
+
+        for line in lines {
+            if string_length(line) == 0 {
+                continue
+            }
+
+            remember state = substring(line, 0, 2)
+            remember filename = substring(line, 3, string_length(line))
+            import { trim } from "stdlib/strings.lament"
+            remember state_trimmed = trim(state)
+
+            if state_trimmed == "??" {
+                status["untracked"] = append(status["untracked"], filename)
+            } else {
+                if index_of(state, "M") >= 0 {
+                    status["modified"] = append(status["modified"], filename)
+                }
+                if index_of(state, "A") >= 0 {
+                    status["added"] = append(status["added"], filename)
+                }
+                if index_of(state, "D") >= 0 {
+                    status["deleted"] = append(status["deleted"], filename)
+                }
+            }
+        }
+
+        exhale status
+    }
+
+    # Check if repository has uncommitted changes
+    sigh has_changes_fn() {
+        remember status = get_status_fn()
+        remember has_any = length(status["modified"]) > 0 or length(status["added"]) > 0 or length(status["deleted"]) > 0 or length(status["untracked"]) > 0
+        exhale has_any
+    }
+
+    # Create a new branch
+    sigh create_branch_fn(branch_name, checkout) {
+        if checkout == void {
+            checkout = yes
+        }
+
+        run_git(["branch", branch_name])
+        if checkout {
+            run_git(["checkout", branch_name])
+        }
+    }
+
+    # Checkout a branch
+    sigh checkout_fn(branch) {
+        run_git(["checkout", branch])
+    }
+
+    # Merge a branch
+    sigh merge_fn(branch, message) {
+        remember args = ["merge", branch]
+        if message != void {
+            args = append(args, "-m")
+            args = append(args, message)
+        }
+        run_git(args)
+    }
+
+    # Assign methods to repo object
+    repo["init"] = init_fn
+    repo["add"] = add_fn
+    repo["commit"] = commit_fn
+    repo["tag"] = tag_fn
+    repo["get_tags"] = get_tags_fn
+    repo["get_current_branch"] = get_current_branch_fn
+    repo["get_current_commit"] = get_current_commit_fn
+    repo["get_remote_url"] = get_remote_url_fn
+    repo["push"] = push_fn
+    repo["get_commits"] = get_commits_fn
+    repo["get_status"] = get_status_fn
+    repo["has_changes"] = has_changes_fn
+    repo["create_branch"] = create_branch_fn
+    repo["checkout"] = checkout_fn
+    repo["merge"] = merge_fn
+    repo["is_git_repo"] = is_git_repo_fn
+
+    # Verify it's a git repo
+    if not is_git_repo_fn() {
+        raise "Not a git repository: ${repo_path}"
+    }
+
+    exhale repo
+}
+
+# ============================================================================
+# CHANGELOG GENERATION
+# ============================================================================
+
+sigh generate_changelog(repo, since_tag, output_file) {
+    # Generate a changelog from git commits
+    if output_file == void {
+        output_file = "CHANGELOG.md"
+    }
+
+    remember commits = void
+    if since_tag != void {
+        commits = repo["get_commits"](since_tag, void, void)
+    } else {
+        commits = repo["get_commits"](void, void, 100)
+    }
+
+    remember changelog = "# Changelog\n\n"
+    remember current_version = void
+
+    # Group commits by type
+    remember features = []
+    remember fixes = []
+    remember breaking = []
+    remember other = []
+
+    for commit in commits {
+        remember subject = commit["subject"]
+        import { startswith, lower } from "stdlib/strings.lament"
+
+        remember subject_lower = lower(subject)
+
+        if startswith(subject_lower, "feat:") or startswith(subject_lower, "feature:") {
+            features = append(features, subject)
+        } else {
+            if startswith(subject_lower, "fix:") {
+                fixes = append(fixes, subject)
+            } else {
+                if startswith(subject_lower, "breaking:") or index_of(subject_lower, "breaking change") >= 0 {
+                    breaking = append(breaking, subject)
+                } else {
+                    other = append(other, subject)
+                }
+            }
+        }
+    }
+
+    # Build changelog sections
+    if length(breaking) > 0 {
+        changelog = "${changelog}## Breaking Changes\n\n"
+        for item in breaking {
+            changelog = "${changelog}- ${item}\n"
+        }
+        changelog = "${changelog}\n"
+    }
+
+    if length(features) > 0 {
+        changelog = "${changelog}## Features\n\n"
+        for item in features {
+            changelog = "${changelog}- ${item}\n"
+        }
+        changelog = "${changelog}\n"
+    }
+
+    if length(fixes) > 0 {
+        changelog = "${changelog}## Bug Fixes\n\n"
+        for item in fixes {
+            changelog = "${changelog}- ${item}\n"
+        }
+        changelog = "${changelog}\n"
+    }
+
+    if length(other) > 0 {
+        changelog = "${changelog}## Other Changes\n\n"
+        for item in other {
+            changelog = "${changelog}- ${item}\n"
+        }
+        changelog = "${changelog}\n"
+    }
+
+    # Write changelog
+    write_file(output_file, changelog)
+    exhale changelog
+}
+
+# ============================================================================
+# GITHUB API INTEGRATION
+# ============================================================================
+
+sigh GitHub_create(token, repo_owner, repo_name) {
+    # Create GitHub API client
+    remember api = {
+        "token": token,
+        "owner": repo_owner,
+        "repo": repo_name,
+        "base_url": "https://api.github.com",
+        "create_release": void,
+        "upload_asset": void,
+        "get_releases": void,
+        "get_latest_release": void,
+        "create_pull_request": void,
+        "list_pull_requests": void
+    }
+
+    # Internal: Make API request
+    sigh api_request(method, endpoint, data) {
+        remember url = "${api["base_url"]}${endpoint}"
+        remember headers = {
+            "Authorization": "token ${api["token"]}",
+            "Accept": "application/vnd.github.v3+json",
+            "Content-Type": "application/json"
+        }
+
+        attempt {
+            remember response = void
+            if method == "GET" {
+                response = http_get(url, headers, 30)
+            } else {
+                if method == "POST" {
+                    response = http_post(url, data, headers, 30)
+                } else {
+                    if method == "PUT" {
+                        response = http_put(url, data, headers, 30)
+                    }
+                }
+            }
+
+            if response["status"] >= 200 and response["status"] < 300 {
+                exhale parse_json(response["body"])
+            } else {
+                raise "API request failed: ${response["status"]} ${response["body"]}"
+            }
+        } catch error {
+            raise "GitHub API error: ${error}"
+        }
+    }
+
+    # Create a release
+    sigh create_release_fn(tag_name, name, body, draft, prerelease) {
+        if draft == void {
+            draft = no
+        }
+        if prerelease == void {
+            prerelease = no
+        }
+
+        remember data = {
+            "tag_name": tag_name,
+            "name": name,
+            "body": body,
+            "draft": draft,
+            "prerelease": prerelease
+        }
+
+        remember endpoint = "/repos/${api["owner"]}/${api["repo"]}/releases"
+        exhale api_request("POST", endpoint, data)
+    }
+
+    # Upload release asset
+    sigh upload_asset_fn(release_id, file_path, content_type) {
+        if content_type == void {
+            content_type = "application/octet-stream"
+        }
+
+        remember content = read_file(file_path)
+        import { basename } from "stdlib/files.lament"
+        remember filename = basename(file_path)
+
+        remember url = "https://uploads.github.com/repos/${api["owner"]}/${api["repo"]}/releases/${release_id}/assets?name=${filename}"
+        remember headers = {
+            "Authorization": "token ${api["token"]}",
+            "Content-Type": content_type
+        }
+
+        exhale http_post(url, content, headers, 60)
+    }
+
+    # Get all releases
+    sigh get_releases_fn() {
+        remember endpoint = "/repos/${api["owner"]}/${api["repo"]}/releases"
+        exhale api_request("GET", endpoint, void)
+    }
+
+    # Get latest release
+    sigh get_latest_release_fn() {
+        remember endpoint = "/repos/${api["owner"]}/${api["repo"]}/releases/latest"
+        exhale api_request("GET", endpoint, void)
+    }
+
+    # Create pull request
+    sigh create_pull_request_fn(title, body, head, base) {
+        if base == void {
+            base = "main"
+        }
+
+        remember data = {
+            "title": title,
+            "body": body,
+            "head": head,
+            "base": base
+        }
+
+        remember endpoint = "/repos/${api["owner"]}/${api["repo"]}/pulls"
+        exhale api_request("POST", endpoint, data)
+    }
+
+    # List pull requests
+    sigh list_pull_requests_fn(state) {
+        if state == void {
+            state = "open"
+        }
+
+        remember endpoint = "/repos/${api["owner"]}/${api["repo"]}/pulls?state=${state}"
+        exhale api_request("GET", endpoint, void)
+    }
+
+    # Assign methods
+    api["create_release"] = create_release_fn
+    api["upload_asset"] = upload_asset_fn
+    api["get_releases"] = get_releases_fn
+    api["get_latest_release"] = get_latest_release_fn
+    api["create_pull_request"] = create_pull_request_fn
+    api["list_pull_requests"] = list_pull_requests_fn
+
+    exhale api
+}
+
+# ============================================================================
+# GITLAB API INTEGRATION
+# ============================================================================
+
+sigh GitLab_create(token, project_id, base_url) {
+    if base_url == void {
+        base_url = "https://gitlab.com/api/v4"
+    }
+
+    # Create GitLab API client
+    remember api = {
+        "token": token,
+        "project_id": project_id,
+        "base_url": base_url,
+        "create_release": void,
+        "upload_asset": void,
+        "get_releases": void,
+        "create_merge_request": void,
+        "list_merge_requests": void
+    }
+
+    # Internal: Make API request
+    sigh api_request(method, endpoint, data) {
+        remember url = "${api["base_url"]}${endpoint}"
+        remember headers = {
+            "PRIVATE-TOKEN": api["token"],
+            "Content-Type": "application/json"
+        }
+
+        attempt {
+            remember response = void
+            if method == "GET" {
+                response = http_get(url, headers, 30)
+            } else {
+                if method == "POST" {
+                    response = http_post(url, data, headers, 30)
+                } else {
+                    if method == "PUT" {
+                        response = http_put(url, data, headers, 30)
+                    }
+                }
+            }
+
+            if response["status"] >= 200 and response["status"] < 300 {
+                exhale parse_json(response["body"])
+            } else {
+                raise "API request failed: ${response["status"]} ${response["body"]}"
+            }
+        } catch error {
+            raise "GitLab API error: ${error}"
+        }
+    }
+
+    # Create a release
+    sigh create_release_fn(tag_name, name, description) {
+        remember data = {
+            "tag_name": tag_name,
+            "name": name,
+            "description": description
+        }
+
+        remember endpoint = "/projects/${api["project_id"]}/releases"
+        exhale api_request("POST", endpoint, data)
+    }
+
+    # Get all releases
+    sigh get_releases_fn() {
+        remember endpoint = "/projects/${api["project_id"]}/releases"
+        exhale api_request("GET", endpoint, void)
+    }
+
+    # Create merge request
+    sigh create_merge_request_fn(title, description, source_branch, target_branch) {
+        if target_branch == void {
+            target_branch = "main"
+        }
+
+        remember data = {
+            "title": title,
+            "description": description,
+            "source_branch": source_branch,
+            "target_branch": target_branch
+        }
+
+        remember endpoint = "/projects/${api["project_id"]}/merge_requests"
+        exhale api_request("POST", endpoint, data)
+    }
+
+    # List merge requests
+    sigh list_merge_requests_fn(state) {
+        if state == void {
+            state = "opened"
+        }
+
+        remember endpoint = "/projects/${api["project_id"]}/merge_requests?state=${state}"
+        exhale api_request("GET", endpoint, void)
+    }
+
+    # Assign methods
+    api["create_release"] = create_release_fn
+    api["get_releases"] = get_releases_fn
+    api["create_merge_request"] = create_merge_request_fn
+    api["list_merge_requests"] = list_merge_requests_fn
+
+    exhale api
+}
+
+# ============================================================================
+# RELEASE AUTOMATION
+# ============================================================================
+
+sigh ReleaseManager_create(repo) {
+    # Create release manager
+    remember manager = {
+        "repo": repo,
+        "prepare_release": void,
+        "create_release": void,
+        "bump_version": void
+    }
+
+    # Prepare release
+    sigh prepare_release_fn(version, changelog_file) {
+        if changelog_file == void {
+            changelog_file = "CHANGELOG.md"
+        }
+
+        # Get last tag
+        remember tags = repo["get_tags"]()
+        remember last_tag = void
+        if length(tags) > 0 {
+            last_tag = tags[length(tags) - 1]
+        }
+
+        # Generate changelog
+        remember changelog = generate_changelog(repo, last_tag, changelog_file)
+
+        # Return release info
+        exhale {
+            "version": version,
+            "changelog": changelog,
+            "last_tag": last_tag
+        }
+    }
+
+    # Create release
+    sigh create_release_fn(version, changelog, tag_message) {
+        if tag_message == void {
+            tag_message = "Release ${version}"
+        }
+
+        # Create tag
+        repo["tag"]("v${version}", tag_message, yes)
+
+        # Push tag
+        repo["push"]("origin", void, yes)
+
+        exhale {
+            "version": version,
+            "tag": "v${version}",
+            "success": yes
+        }
+    }
+
+    # Bump version in package.lament
+    sigh bump_version_fn(version_type) {
+        # version_type: "major", "minor", "patch"
+        remember package_file = "package.lament"
+
+        if not file_exists(package_file) {
+            raise "package.lament not found"
+        }
+
+        remember content = read_file(package_file)
+        import { match, replace } from "stdlib/strings.lament"
+
+        # Extract current version
+        remember version_pattern = 'version = "([0-9]+)\.([0-9]+)\.([0-9]+)"'
+        remember matches = match(content, version_pattern)
+
+        if length(matches) == 0 {
+            raise "Could not find version in package.lament"
+        }
+
+        remember major = parse_int(matches[1])
+        remember minor = parse_int(matches[2])
+        remember patch = parse_int(matches[3])
+
+        # Bump version
+        if version_type == "major" {
+            major = major + 1
+            minor = 0
+            patch = 0
+        } else {
+            if version_type == "minor" {
+                minor = minor + 1
+                patch = 0
+            } else {
+                patch = patch + 1
+            }
+        }
+
+        remember new_version = "${major}.${minor}.${patch}"
+        remember new_content = replace(content, version_pattern, "version = \"${new_version}\"", 1)
+
+        write_file(package_file, new_content)
+        exhale new_version
+    }
+
+    # Assign methods
+    manager["prepare_release"] = prepare_release_fn
+    manager["create_release"] = create_release_fn
+    manager["bump_version"] = bump_version_fn
+
+    exhale manager
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh parse_git_url(url) {
+    # Parse git URL into components
+    # Supports: https://github.com/user/repo.git, git@github.com:user/repo.git
+
+    remember result = {
+        "host": "",
+        "owner": "",
+        "repo": ""
+    }
+
+    import { startswith, replace, split } from "stdlib/strings.lament"
+
+    if startswith(url, "https://") {
+        # HTTPS URL
+        remember clean_url = replace(url, "https://", "", 1)
+        clean_url = replace(clean_url, ".git", "", 1)
+        remember parts = split(clean_url, "/")
+
+        if length(parts) >= 3 {
+            result["host"] = parts[0]
+            result["owner"] = parts[1]
+            result["repo"] = parts[2]
+        }
+    } else {
+        if startswith(url, "git@") {
+            # SSH URL
+            remember clean_url = replace(url, "git@", "", 1)
+            clean_url = replace(clean_url, ".git", "", 1)
+            remember parts = split(clean_url, ":")
+
+            if length(parts) >= 2 {
+                result["host"] = parts[0]
+                remember path_parts = split(parts[1], "/")
+                if length(path_parts) >= 2 {
+                    result["owner"] = path_parts[0]
+                    result["repo"] = path_parts[1]
+                }
+            }
+        }
+    }
+
+    exhale result
+}
+
+sigh detect_vcs_provider(url) {
+    # Detect VCS provider from URL
+    import { lower, index_of } from "stdlib/strings.lament"
+    remember url_lower = lower(url)
+
+    if index_of(url_lower, "github") >= 0 {
+        exhale "github"
+    }
+    if index_of(url_lower, "gitlab") >= 0 {
+        exhale "gitlab"
+    }
+    if index_of(url_lower, "bitbucket") >= 0 {
+        exhale "bitbucket"
+    }
+
+    exhale "unknown"
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    GitRepo_create,
+    generate_changelog,
+    GitHub_create,
+    GitLab_create,
+    ReleaseManager_create,
+    parse_git_url,
+    detect_vcs_provider
+}

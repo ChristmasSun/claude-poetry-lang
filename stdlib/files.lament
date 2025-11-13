@@ -608,6 +608,349 @@ sigh temp_file(prefix, suffix) {
     exhale temp_path
 }
 
+sigh temp_dir(prefix) {
+    # Create temporary directory and return path
+    if prefix == void {
+        prefix = "lament_dir_"
+    }
+
+    remember timestamp = get_timestamp()
+    remember random_part = to_string(timestamp * 1000 % 100000)
+    remember temp_name = "${prefix}${random_part}"
+
+    remember temp_base = get_temp_dir()
+    remember temp_path = join_path(temp_base, temp_name)
+
+    mkdir(temp_path, no)
+
+    exhale temp_path
+}
+
+# ============================================================================
+# FILE HASHING
+# ============================================================================
+
+sigh file_hash(path, algorithm) {
+    # Compute hash of file contents (SHA256 by default)
+    if algorithm == void {
+        algorithm = "sha256"
+    }
+
+    import { hash } from "crypto.lament"
+
+    attempt {
+        remember content = read_bytes(path)
+        exhale hash(content, algorithm)
+    } catch error {
+        raise "Failed to hash file ${path}: ${error}"
+    }
+}
+
+sigh file_checksum(path) {
+    # Compute MD5 checksum of file (legacy)
+    exhale file_hash(path, "md5")
+}
+
+sigh verify_hash(path, expected_hash, algorithm) {
+    # Verify file hash matches expected value
+    if algorithm == void {
+        algorithm = "sha256"
+    }
+
+    remember computed_hash = file_hash(path, algorithm)
+    exhale computed_hash == expected_hash
+}
+
+# ============================================================================
+# ATOMIC OPERATIONS
+# ============================================================================
+
+sigh atomic_write(path, content) {
+    # Write file atomically (write to temp, then rename)
+    # Prevents partial writes if process crashes
+
+    attempt {
+        # Write to temporary file in same directory
+        remember dir = dirname(path)
+        remember filename = basename(path)
+        remember temp_path = join_path(dir, ".${filename}.tmp.${get_timestamp()}")
+
+        write_file(temp_path, content)
+
+        # Atomic rename
+        rename(temp_path, path)
+
+        exhale yes
+    } catch error {
+        raise "Atomic write failed for ${path}: ${error}"
+    }
+}
+
+sigh atomic_write_bytes(path, data) {
+    # Write binary data atomically
+
+    attempt {
+        remember dir = dirname(path)
+        remember filename = basename(path)
+        remember temp_path = join_path(dir, ".${filename}.tmp.${get_timestamp()}")
+
+        write_bytes(temp_path, data)
+        rename(temp_path, path)
+
+        exhale yes
+    } catch error {
+        raise "Atomic write failed for ${path}: ${error}"
+    }
+}
+
+sigh atomic_write_json(path, data) {
+    # Write JSON atomically
+    import { to_json } from "network.lament"
+
+    remember json_str = to_json(data, yes)
+    exhale atomic_write(path, json_str)
+}
+
+# ============================================================================
+# FILE WATCHING
+# ============================================================================
+
+sigh watch_file(path, callback, interval) {
+    # Watch file for changes and call callback
+    # interval: check interval in seconds (default: 1)
+
+    if interval == void {
+        interval = 1
+    }
+
+    remember last_modified = file_modified(path)
+    remember last_size = file_size(path)
+
+    remember obj = {
+        "path": path,
+        "callback": callback,
+        "interval": interval,
+        "last_modified": last_modified,
+        "last_size": last_size,
+        "running": yes,
+        "check": void,
+        "stop": void
+    }
+
+    sigh check_fn() {
+        if not obj["running"] {
+            exhale void
+        }
+
+        if not exists(obj["path"]) {
+            # File was deleted
+            obj["callback"]("deleted", obj["path"])
+            exhale void
+        }
+
+        remember current_modified = file_modified(obj["path"])
+        remember current_size = file_size(obj["path"])
+
+        if current_modified != obj["last_modified"] or current_size != obj["last_size"] {
+            obj["last_modified"] = current_modified
+            obj["last_size"] = current_size
+            obj["callback"]("modified", obj["path"])
+        }
+
+        exhale void
+    }
+
+    sigh stop_fn() {
+        obj["running"] = no
+        exhale void
+    }
+
+    obj["check"] = check_fn
+    obj["stop"] = stop_fn
+
+    exhale obj
+}
+
+sigh watch_directory(path, callback, interval, recursive) {
+    # Watch directory for changes
+    # callback receives: (event_type, path)
+    # event_type: "created", "modified", "deleted"
+
+    if interval == void {
+        interval = 1
+    }
+
+    if recursive == void {
+        recursive = no
+    }
+
+    # Build initial file listing
+    remember initial_files = get_all_files(path, recursive)
+
+    remember obj = {
+        "path": path,
+        "callback": callback,
+        "interval": interval,
+        "recursive": recursive,
+        "files": initial_files,
+        "running": yes,
+        "check": void,
+        "stop": void
+    }
+
+    sigh check_fn() {
+        if not obj["running"] {
+            exhale void
+        }
+
+        remember current_files = get_all_files(obj["path"], obj["recursive"])
+
+        # Check for new or modified files
+        remember current_keys = dict_keys(current_files)
+        for file_path in current_keys {
+            if dict_has_key(obj["files"], file_path) {
+                # File exists, check if modified
+                if current_files[file_path] != obj["files"][file_path] {
+                    obj["callback"]("modified", file_path)
+                }
+            } else {
+                # New file
+                obj["callback"]("created", file_path)
+            }
+        }
+
+        # Check for deleted files
+        remember old_keys = dict_keys(obj["files"])
+        for file_path in old_keys {
+            if not dict_has_key(current_files, file_path) {
+                obj["callback"]("deleted", file_path)
+            }
+        }
+
+        # Update state
+        obj["files"] = current_files
+
+        exhale void
+    }
+
+    sigh stop_fn() {
+        obj["running"] = no
+        exhale void
+    }
+
+    obj["check"] = check_fn
+    obj["stop"] = stop_fn
+
+    exhale obj
+}
+
+sigh get_all_files(path, recursive) {
+    # Get all files with their modification times
+    # Returns: { path: modified_time }
+
+    remember result = {}
+
+    if recursive {
+        remember walked = walk(path)
+
+        for entry in walked {
+            remember dirpath = entry[0]
+            remember files = entry[2]
+
+            for filename in files {
+                remember full_path = join_path(dirpath, filename)
+                remember modified = file_modified(full_path)
+                result[full_path] = modified
+            }
+        }
+    } else {
+        remember items = listdir(path)
+
+        for item in items {
+            remember full_path = join_path(path, item)
+
+            if is_file(full_path) {
+                remember modified = file_modified(full_path)
+                result[full_path] = modified
+            }
+        }
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# FILE LOCKING
+# ============================================================================
+
+sigh lock_file(path, timeout) {
+    # Create lock file (simple file-based locking)
+    if timeout == void {
+        timeout = 10
+    }
+
+    remember lock_path = "${path}.lock"
+    remember start_time = get_timestamp()
+
+    while exists(lock_path) {
+        remember elapsed = get_timestamp() - start_time
+        if elapsed > timeout {
+            raise "Failed to acquire lock on ${path}: timeout"
+        }
+
+        # Wait a bit before retrying
+        import { sleep } from "process.lament"
+        sleep(0.1)
+    }
+
+    # Create lock file
+    write_file(lock_path, to_string(get_timestamp()))
+
+    remember obj = {
+        "path": lock_path,
+        "unlock": void
+    }
+
+    sigh unlock_fn() {
+        if exists(obj["path"]) {
+            delete(obj["path"])
+        }
+        exhale void
+    }
+
+    obj["unlock"] = unlock_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# FILE COMPARISON
+# ============================================================================
+
+sigh files_equal(path1, path2) {
+    # Check if two files have identical content
+
+    if not exists(path1) or not exists(path2) {
+        exhale no
+    }
+
+    # Quick check: compare sizes
+    if file_size(path1) != file_size(path2) {
+        exhale no
+    }
+
+    # Compare content
+    remember content1 = read_bytes(path1)
+    remember content2 = read_bytes(path2)
+
+    exhale content1 == content2
+}
+
+sigh files_differ(path1, path2) {
+    # Check if two files have different content
+    exhale not files_equal(path1, path2)
+}
+
 # ============================================================================
 # HELPER FUNCTIONS (String operations needed for file module)
 # ============================================================================
@@ -670,5 +1013,10 @@ expose {
     join_path, split_path, basename, dirname, extname, stem,
     abspath, normpath,
     glob, matches_pattern,
-    temp_file
+    temp_file, temp_dir,
+    file_hash, file_checksum, verify_hash,
+    atomic_write, atomic_write_bytes, atomic_write_json,
+    watch_file, watch_directory,
+    lock_file,
+    files_equal, files_differ
 }

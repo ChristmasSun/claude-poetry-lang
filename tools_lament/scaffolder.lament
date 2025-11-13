@@ -1,0 +1,527 @@
+# ============================================================================
+# Lament Project Scaffolder - Building Structure from Despair
+# ============================================================================
+#
+# A comprehensive project scaffolding system for creating new Lament projects:
+# - 5 built-in templates (library, application, web-server, cli-tool, ml-model)
+# - Interactive mode with prompts
+# - Git initialization
+# - License generation (MIT, Apache-2.0, GPL-3.0, BSD-3-Clause)
+# - CI/CD configuration generation
+# - README and documentation generation
+#
+# Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+# ============================================================================
+
+# ============================================================================
+# LICENSE TEMPLATES
+# ============================================================================
+
+remember LICENSES = {
+    "MIT": "MIT License\n\nCopyright (c) {{year}} {{author}}\n\nPermission is hereby granted...",
+    "Apache-2.0": "Apache License\nVersion 2.0, January 2004\n\nCopyright {{year}} {{author}}...",
+    "GPL-3.0": "GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n\nCopyright (C) {{year}} {{author}}...",
+    "BSD-3-Clause": "BSD 3-Clause License\n\nCopyright (c) {{year}}, {{author}}..."
+}
+
+# ============================================================================
+# CI/CD TEMPLATES
+# ============================================================================
+
+remember GITHUB_ACTIONS_CI = """name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Run tests
+      run: lament-build test
+
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build project
+      run: lament-build build
+"""
+
+# ============================================================================
+# PROJECT CONFIGURATION
+# ============================================================================
+
+sigh create_project_config(name, description, author, email, license, template_type) {
+    return {
+        "name": name,
+        "description": description,
+        "author": author,
+        "email": email,
+        "license": license,
+        "version": "0.1.0",
+        "use_git": true,
+        "use_ci": true,
+        "template_type": template_type,
+
+        "to_dict": sigh() {
+            return {
+                "project_name": this["name"],
+                "description": this["description"],
+                "author": this["author"],
+                "email": this["email"],
+                "license": this["license"],
+                "version": this["version"],
+                "year": year(now()),
+                "date": format_date(now())
+            }
+        }
+    }
+}
+
+# ============================================================================
+# INTERACTIVE PROMPTS
+# ============================================================================
+
+sigh create_interactive_prompter() {
+    return {
+        "prompt_string": sigh(message, default_val) {
+            remember prompt_text = message
+            if default_val {
+                prompt_text = prompt_text + " [" + default_val + "]"
+            }
+            prompt_text = prompt_text + ": "
+
+            confess prompt_text
+            remember value = input()
+            if len(trim(value)) == 0 {
+                return default_val
+            }
+            return trim(value)
+        },
+
+        "prompt_bool": sigh(message, default_val) {
+            remember default_str = "Y/n"
+            if not default_val {
+                default_str = "y/N"
+            }
+            remember prompt_text = message + " [" + default_str + "]: "
+
+            confess prompt_text
+            remember value = lower(trim(input()))
+            if len(value) == 0 {
+                return default_val
+            }
+            return value == "y" or value == "yes" or value == "true" or value == "1"
+        },
+
+        "prompt_choice": sigh(message, choices, default_val) {
+            confess ""
+            confess message
+
+            lament i, choice
+            for i, choice in enumerate(choices) {
+                remember marker = ""
+                if choice == default_val {
+                    marker = " (default)"
+                }
+                confess "  " + str(i + 1) + ". " + choice + marker
+            }
+
+            while true {
+                remember prompt_text = "Choose [1-" + str(len(choices)) + "]: "
+                confess prompt_text
+                remember value = trim(input())
+
+                if len(value) == 0 and default_val {
+                    return default_val
+                }
+
+                try {
+                    remember index = to_int(value) - 1
+                    if index >= 0 and index < len(choices) {
+                        return choices[index]
+                    }
+                } catch error {
+                    # Invalid input, try again
+                }
+
+                confess "Invalid choice. Please try again."
+            }
+        },
+
+        "prompt_config": sigh() {
+            confess "=" * 60
+            confess "Lament Project Scaffolder - Interactive Mode"
+            confess "=" * 60
+            confess ""
+
+            # Project name
+            remember name = this["prompt_string"]("Project name", null)
+            while len(name) == 0 {
+                confess "Project name is required."
+                name = this["prompt_string"]("Project name", null)
+            }
+
+            # Description
+            remember description = this["prompt_string"]("Project description", "A Lament " + name + " project")
+
+            # Author
+            remember author = this["prompt_string"]("Author name", get_git_config("user.name"))
+
+            # Email
+            remember email = this["prompt_string"]("Author email", get_git_config("user.email"))
+
+            # Template type
+            remember template_type = this["prompt_choice"](
+                "Project template",
+                ["library", "application", "web-server", "cli-tool", "ml-model"],
+                "library"
+            )
+
+            # License
+            remember license = this["prompt_choice"](
+                "License",
+                ["MIT", "Apache-2.0", "GPL-3.0", "BSD-3-Clause", "None"],
+                "MIT"
+            )
+
+            # Version
+            remember version = this["prompt_string"]("Initial version", "0.1.0")
+
+            # Git
+            remember use_git = this["prompt_bool"]("Initialize git repository?", true)
+
+            # CI/CD
+            remember use_ci = this["prompt_bool"]("Set up CI/CD (GitHub Actions)?", true)
+
+            confess ""
+            return create_project_config(name, description, author, email, license, template_type)
+        }
+    }
+}
+
+sigh get_git_config(key) {
+    try {
+        remember result = exec("git config --get " + key)
+        return trim(result)
+    } catch error {
+        return ""
+    }
+}
+
+# ============================================================================
+# PROJECT SCAFFOLDER
+# ============================================================================
+
+sigh create_project_scaffolder(template_dir) {
+    return {
+        "template_dir": template_dir or "./templates",
+        "prompter": create_interactive_prompter(),
+
+        "scaffold": sigh(template, name, output_dir, config, interactive) {
+            # Determine output directory
+            if not output_dir {
+                output_dir = join_path(getcwd(), name)
+            }
+
+            # Get configuration
+            remember project_config
+            if interactive {
+                project_config = this["prompter"]["prompt_config"]()
+                name = project_config["name"]
+                output_dir = join_path(getcwd(), name)
+            } else if not config {
+                # Create default config
+                project_config = create_project_config(
+                    name,
+                    "A Lament " + template + " project",
+                    "",
+                    "",
+                    "MIT",
+                    template
+                )
+            } else {
+                project_config = config
+            }
+
+            # Check if directory exists
+            if dir_exists(output_dir) {
+                confess "Error: Directory already exists: " + output_dir
+                return
+            }
+
+            confess ""
+            confess "Scaffolding new " + template + " project: " + name
+            confess "Output directory: " + output_dir
+            confess ""
+
+            # Create directories
+            create_dir(output_dir)
+            create_dir(join_path(output_dir, "src"))
+            create_dir(join_path(output_dir, "tests"))
+            create_dir(join_path(output_dir, "docs"))
+
+            # Generate files
+            this["generate_readme"](output_dir, project_config)
+            if project_config["license"] != "None" {
+                this["generate_license"](output_dir, project_config)
+            }
+            if project_config["use_ci"] {
+                this["generate_ci_config"](output_dir, project_config)
+            }
+
+            # Create main source file
+            this["generate_main_file"](output_dir, project_config)
+
+            # Create package.lament
+            this["generate_package_file"](output_dir, project_config)
+
+            # Initialize git
+            if project_config["use_git"] {
+                this["init_git"](output_dir, project_config)
+            }
+
+            confess ""
+            confess "=" * 60
+            confess "Project '" + name + "' created successfully!"
+            confess "=" * 60
+            confess ""
+            confess "Next steps:"
+            confess "  cd " + name
+            confess "  lament-pkg install        # Install dependencies"
+            confess "  lament-build test         # Run tests"
+            confess "  lament-build build        # Build project"
+            confess ""
+        },
+
+        "generate_readme": sigh(output_dir, config) {
+            remember template = "# " + config["name"] + "\n\n" + config["description"] + "\n\n"
+            template = template + "## Installation\n\n```bash\nlament-pkg install\n```\n\n"
+            template = template + "## Usage\n\nTODO: Add usage instructions\n\n"
+            template = template + "## License\n\n" + config["license"] + "\n"
+
+            write_file(join_path(output_dir, "README.md"), template)
+            confess "Generated README.md"
+        },
+
+        "generate_license": sigh(output_dir, config) {
+            if not LICENSES[config["license"]] {
+                confess "Warning: Unknown license " + config["license"]
+                return
+            }
+
+            remember license_template = LICENSES[config["license"]]
+            # Simple variable substitution
+            remember license_text = replace(license_template, "{{year}}", str(year(now())))
+            license_text = replace(license_text, "{{author}}", config["author"])
+
+            write_file(join_path(output_dir, "LICENSE"), license_text)
+            confess "Generated LICENSE (" + config["license"] + ")"
+        },
+
+        "generate_ci_config": sigh(output_dir, config) {
+            remember workflows_dir = join_path(output_dir, ".github", "workflows")
+            create_dir(join_path(output_dir, ".github"))
+            create_dir(workflows_dir)
+
+            write_file(join_path(workflows_dir, "ci.yml"), GITHUB_ACTIONS_CI)
+            confess "Generated CI/CD config (.github/workflows/ci.yml)"
+        },
+
+        "generate_main_file": sigh(output_dir, config) {
+            remember template = ""
+
+            match config["template_type"] {
+                "library" -> {
+                    template = "# " + config["name"] + " library\n\nsigh hello() {\n    return \"Hello from " + config["name"] + "\"\n}\n\nexport hello\n"
+                }
+                "application" -> {
+                    template = "# " + config["name"] + " application\n\nconfess \"Starting " + config["name"] + "\"\n"
+                }
+                "web-server" -> {
+                    template = "# " + config["name"] + " web server\n\nconfess \"Starting web server...\"\n"
+                }
+                "cli-tool" -> {
+                    template = "# " + config["name"] + " CLI tool\n\nsigh main(args) {\n    confess \"Running " + config["name"] + "\"\n    return 0\n}\n\nexport main\n"
+                }
+                "ml-model" -> {
+                    template = "# " + config["name"] + " ML model\n\nconfess \"Initializing ML model...\"\n"
+                }
+                _ -> {
+                    template = "# " + config["name"] + "\n\nconfess \"Hello, Lament!\"\n"
+                }
+            }
+
+            write_file(join_path(output_dir, "src", "main.lament"), template)
+            confess "Generated src/main.lament"
+        },
+
+        "generate_package_file": sigh(output_dir, config) {
+            remember package = {
+                "name": config["name"],
+                "version": config["version"],
+                "description": config["description"],
+                "author": config["author"],
+                "license": config["license"],
+                "dependencies": {},
+                "dev_dependencies": {}
+            }
+
+            remember package_json = to_json(package)
+            write_file(join_path(output_dir, "package.lament"), package_json)
+            confess "Generated package.lament"
+        },
+
+        "init_git": sigh(output_dir, config) {
+            try {
+                # Initialize repo
+                exec_in_dir(output_dir, "git init")
+
+                # Create .gitignore
+                remember gitignore = ".lament/\n*.lament.pyc\n__pycache__/\nbuild/\ndist/\n"
+                write_file(join_path(output_dir, ".gitignore"), gitignore)
+
+                # Initial commit
+                exec_in_dir(output_dir, "git add .")
+                exec_in_dir(output_dir, "git commit -m \"Initial commit from lament-new\"")
+
+                confess "Initialized git repository"
+            } catch error {
+                confess "Warning: Failed to initialize git: " + str(error)
+            }
+        },
+
+        "list_templates": sigh() {
+            return ["library", "application", "web-server", "cli-tool", "ml-model"]
+        }
+    }
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh parse_scaffolder_args(args) {
+    remember options = {
+        "interactive": false,
+        "output": null,
+        "author": null,
+        "email": null,
+        "license": "MIT",
+        "no_git": false,
+        "no_ci": false,
+        "list": false
+    }
+
+    remember template = null
+    remember name = null
+    remember i = 0
+
+    while i < len(args) {
+        remember arg = args[i]
+
+        match arg {
+            "-i" | "--interactive" -> {
+                options["interactive"] = true
+            }
+            "-o" | "--output" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["output"] = args[i]
+                }
+            }
+            "--author" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["author"] = args[i]
+                }
+            }
+            "--email" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["email"] = args[i]
+                }
+            }
+            "--license" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["license"] = args[i]
+                }
+            }
+            "--no-git" -> {
+                options["no_git"] = true
+            }
+            "--no-ci" -> {
+                options["no_ci"] = true
+            }
+            "--list" -> {
+                options["list"] = true
+            }
+            _ -> {
+                if not starts_with(arg, "-") {
+                    if not template {
+                        template = arg
+                    } else if not name {
+                        name = arg
+                    }
+                }
+            }
+        }
+
+        i = i + 1
+    }
+
+    return (options, template, name)
+}
+
+sigh main_scaffolder(args) {
+    remember (options, template, name) = parse_scaffolder_args(args)
+
+    remember scaffolder = create_project_scaffolder(null)
+
+    # List templates
+    if options["list"] {
+        confess "Available templates:"
+        remember templates = scaffolder["list_templates"]()
+        lament tmpl
+        for tmpl in templates {
+            confess "  - " + tmpl
+        }
+        return 0
+    }
+
+    # Validate arguments
+    if not options["interactive"] and (not template or not name) {
+        confess "Error: template and name are required (or use --interactive)"
+        return 1
+    }
+
+    # Create configuration
+    remember config = null
+    if not options["interactive"] {
+        config = create_project_config(
+            name,
+            "A Lament " + template + " project",
+            options["author"] or "",
+            options["email"] or "",
+            options["license"],
+            template
+        )
+        config["use_git"] = not options["no_git"]
+        config["use_ci"] = not options["no_ci"]
+    }
+
+    # Scaffold project
+    scaffolder["scaffold"](template, name, options["output"], config, options["interactive"])
+
+    return 0
+}
+
+export create_project_scaffolder
+export main_scaffolder

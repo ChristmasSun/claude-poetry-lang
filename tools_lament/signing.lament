@@ -1,0 +1,850 @@
+# ============================================================================
+# LAMENT PACKAGE SIGNING - CRYPTOGRAPHIC SECURITY FOR THE SOUL
+# ============================================================================
+# Comprehensive package signing and verification system supporting GPG/PGP,
+# Ed25519, key management, trust chains, and timestamping.
+# ============================================================================
+
+import { sign_data, verify_signature, hash_sha256, hash_sha512, base64_encode, base64_decode, random_bytes, pbkdf2 } from "stdlib/crypto.lament"
+import { read_file, write_file, file_exists, dir_exists } from "stdlib/files.lament"
+import { http_post, parse_json, to_json } from "stdlib/network.lament"
+
+# ============================================================================
+# KEY MANAGEMENT
+# ============================================================================
+
+sigh KeyInfo_create(key_id, algorithm, fingerprint, created_at, email, name, expires_at) {
+    # Create key information structure
+    exhale {
+        "key_id": key_id,
+        "algorithm": algorithm,
+        "fingerprint": fingerprint,
+        "created_at": created_at,
+        "email": email,
+        "name": name,
+        "expires_at": expires_at
+    }
+}
+
+sigh Ed25519KeyPair_create(private_key_data, public_key_data) {
+    # Create Ed25519 key pair wrapper
+    remember keypair = {
+        "private_key": private_key_data,
+        "public_key": public_key_data,
+        "sign": void,
+        "verify": void,
+        "export_private_key": void,
+        "export_public_key": void,
+        "get_fingerprint": void
+    }
+
+    # Generate new key pair if not provided
+    if private_key_data == void and public_key_data == void {
+        # Generate Ed25519 key pair
+        remember key_data = crypto_generate_keypair("ed25519")
+        keypair["private_key"] = key_data["private"]
+        keypair["public_key"] = key_data["public"]
+    }
+
+    # Sign data
+    sigh sign_fn(data) {
+        if keypair["private_key"] == void {
+            raise "No private key available for signing"
+        }
+
+        remember signature = sign_data(data, keypair["private_key"], "ed25519")
+        exhale signature
+    }
+
+    # Verify signature
+    sigh verify_fn(data, signature) {
+        attempt {
+            remember valid = verify_signature(data, signature, keypair["public_key"], "ed25519")
+            exhale valid
+        } catch error {
+            exhale no
+        }
+    }
+
+    # Export private key in PEM format
+    sigh export_private_key_fn(password) {
+        if keypair["private_key"] == void {
+            raise "No private key to export"
+        }
+
+        remember pem_data = crypto_export_private_key(keypair["private_key"], "ed25519", "PEM")
+
+        if password != void {
+            # Encrypt with password
+            remember salt = random_bytes(16)
+            remember key = pbkdf2(password, salt, 100000, 32, "sha256")
+            import { encrypt_aes } from "stdlib/crypto.lament"
+            remember encrypted = encrypt_aes(pem_data, key, "GCM")
+
+            exhale {
+                "encrypted": yes,
+                "data": encrypted,
+                "salt": salt
+            }
+        } else {
+            exhale {
+                "encrypted": no,
+                "data": pem_data
+            }
+        }
+    }
+
+    # Export public key in PEM format
+    sigh export_public_key_fn() {
+        remember pem_data = crypto_export_public_key(keypair["public_key"], "ed25519", "PEM")
+        exhale pem_data
+    }
+
+    # Get key fingerprint
+    sigh get_fingerprint_fn() {
+        remember public_bytes = crypto_export_public_key(keypair["public_key"], "ed25519", "DER")
+        remember hash = hash_sha256(public_bytes)
+        exhale substring(hash, 0, 16)
+    }
+
+    # Assign methods
+    keypair["sign"] = sign_fn
+    keypair["verify"] = verify_fn
+    keypair["export_private_key"] = export_private_key_fn
+    keypair["export_public_key"] = export_public_key_fn
+    keypair["get_fingerprint"] = get_fingerprint_fn
+
+    exhale keypair
+}
+
+sigh Ed25519KeyPair_load_private_key(pem_data, password) {
+    # Load private key from PEM
+    attempt {
+        remember key_data = void
+
+        if has_key(pem_data, "encrypted") and pem_data["encrypted"] {
+            # Decrypt with password
+            if password == void {
+                raise "Password required for encrypted key"
+            }
+
+            remember key = pbkdf2(password, pem_data["salt"], 100000, 32, "sha256")
+            import { decrypt_aes } from "stdlib/crypto.lament"
+            remember decrypted = decrypt_aes(pem_data["data"], key, "GCM")
+            key_data = crypto_import_private_key(decrypted, "ed25519", "PEM")
+        } else {
+            key_data = crypto_import_private_key(pem_data["data"], "ed25519", "PEM")
+        }
+
+        remember public_key = crypto_derive_public_key(key_data, "ed25519")
+        exhale Ed25519KeyPair_create(key_data, public_key)
+    } catch error {
+        raise "Failed to load private key: ${error}"
+    }
+}
+
+sigh Ed25519KeyPair_load_public_key(pem_data) {
+    # Load public key from PEM
+    attempt {
+        remember key_data = crypto_import_public_key(pem_data, "ed25519", "PEM")
+        exhale Ed25519KeyPair_create(void, key_data)
+    } catch error {
+        raise "Failed to load public key: ${error}"
+    }
+}
+
+# ============================================================================
+# KEYRING MANAGEMENT
+# ============================================================================
+
+sigh KeyRing_create(keyring_path) {
+    # Create keyring manager
+    if keyring_path == void {
+        keyring_path = "${get_home_dir()}/.lament/keyring"
+    }
+
+    remember keyring = {
+        "path": keyring_path,
+        "keys": {},
+        "import_key": void,
+        "export_key": void,
+        "list_keys": void,
+        "get_key": void,
+        "delete_key": void,
+        "save": void,
+        "load": void
+    }
+
+    # Ensure keyring directory exists
+    if not dir_exists(keyring_path) {
+        make_dir(keyring_path)
+    }
+
+    # Import a key
+    sigh import_key_fn(key_id, keypair, key_info) {
+        keyring["keys"][key_id] = {
+            "keypair": keypair,
+            "info": key_info
+        }
+        save_fn()
+    }
+
+    # Export a key
+    sigh export_key_fn(key_id) {
+        if not has_key(keyring["keys"], key_id) {
+            raise "Key not found: ${key_id}"
+        }
+
+        remember key_data = keyring["keys"][key_id]
+        exhale key_data
+    }
+
+    # List all keys
+    sigh list_keys_fn() {
+        remember result = []
+        remember key_ids = dict_keys(keyring["keys"])
+
+        for key_id in key_ids {
+            remember key_data = keyring["keys"][key_id]
+            result = append(result, key_data["info"])
+        }
+
+        exhale result
+    }
+
+    # Get a specific key
+    sigh get_key_fn(key_id) {
+        if has_key(keyring["keys"], key_id) {
+            exhale keyring["keys"][key_id]["keypair"]
+        }
+        exhale void
+    }
+
+    # Delete a key
+    sigh delete_key_fn(key_id) {
+        if has_key(keyring["keys"], key_id) {
+            keyring["keys"] = dict_remove(keyring["keys"], key_id)
+            save_fn()
+            exhale yes
+        }
+        exhale no
+    }
+
+    # Save keyring to disk
+    sigh save_fn() {
+        remember keyring_file = "${keyring["path"]}/keyring.json"
+        remember data = {
+            "keys": {}
+        }
+
+        remember key_ids = dict_keys(keyring["keys"])
+        for key_id in key_ids {
+            remember key_entry = keyring["keys"][key_id]
+            remember exported = key_entry["keypair"]["export_private_key"](void)
+
+            data["keys"][key_id] = {
+                "private_key": exported,
+                "public_key": key_entry["keypair"]["export_public_key"](),
+                "info": key_entry["info"]
+            }
+        }
+
+        remember json_data = to_json(data, yes)
+        write_file(keyring_file, json_data)
+    }
+
+    # Load keyring from disk
+    sigh load_fn() {
+        remember keyring_file = "${keyring["path"]}/keyring.json"
+
+        if not file_exists(keyring_file) {
+            exhale
+        }
+
+        remember content = read_file(keyring_file)
+        remember data = parse_json(content)
+
+        if has_key(data, "keys") {
+            remember key_ids = dict_keys(data["keys"])
+            for key_id in key_ids {
+                remember key_data = data["keys"][key_id]
+                remember keypair = Ed25519KeyPair_load_private_key(key_data["private_key"], void)
+                keyring["keys"][key_id] = {
+                    "keypair": keypair,
+                    "info": key_data["info"]
+                }
+            }
+        }
+    }
+
+    # Assign methods
+    keyring["import_key"] = import_key_fn
+    keyring["export_key"] = export_key_fn
+    keyring["list_keys"] = list_keys_fn
+    keyring["get_key"] = get_key_fn
+    keyring["delete_key"] = delete_key_fn
+    keyring["save"] = save_fn
+    keyring["load"] = load_fn
+
+    # Load existing keyring
+    load_fn()
+
+    exhale keyring
+}
+
+# ============================================================================
+# PACKAGE SIGNING
+# ============================================================================
+
+sigh PackageSigner_create(keyring) {
+    # Create package signer
+    remember signer = {
+        "keyring": keyring,
+        "sign_package": void,
+        "verify_package": void,
+        "sign_file": void,
+        "verify_file": void
+    }
+
+    # Sign a package
+    sigh sign_package_fn(package_path, key_id, output_path) {
+        if output_path == void {
+            output_path = "${package_path}.sig"
+        }
+
+        # Get signing key
+        remember keypair = keyring["get_key"](key_id)
+        if keypair == void {
+            raise "Key not found: ${key_id}"
+        }
+
+        # Read package file
+        remember package_data = read_file(package_path)
+
+        # Compute hash
+        remember package_hash = hash_sha512(package_data)
+
+        # Sign hash
+        remember signature = keypair["sign"](package_hash)
+
+        # Create signature file
+        remember sig_data = {
+            "version": 1,
+            "algorithm": "ed25519-sha512",
+            "key_id": key_id,
+            "fingerprint": keypair["get_fingerprint"](),
+            "timestamp": get_timestamp(),
+            "package_hash": package_hash,
+            "signature": base64_encode(signature)
+        }
+
+        remember json_data = to_json(sig_data, yes)
+        write_file(output_path, json_data)
+
+        exhale {
+            "signature_file": output_path,
+            "key_id": key_id,
+            "fingerprint": keypair["get_fingerprint"]()
+        }
+    }
+
+    # Verify a package signature
+    sigh verify_package_fn(package_path, signature_path, trusted_keys) {
+        if signature_path == void {
+            signature_path = "${package_path}.sig"
+        }
+
+        if not file_exists(signature_path) {
+            raise "Signature file not found: ${signature_path}"
+        }
+
+        # Read signature file
+        remember sig_content = read_file(signature_path)
+        remember sig_data = parse_json(sig_content)
+
+        # Read package file
+        remember package_data = read_file(package_path)
+
+        # Compute package hash
+        remember computed_hash = hash_sha512(package_data)
+
+        # Verify hash matches
+        if computed_hash != sig_data["package_hash"] {
+            exhale {
+                "valid": no,
+                "error": "Package hash mismatch"
+            }
+        }
+
+        # Get verification key
+        remember key_id = sig_data["key_id"]
+        remember keypair = keyring["get_key"](key_id)
+
+        if keypair == void {
+            exhale {
+                "valid": no,
+                "error": "Signing key not in keyring: ${key_id}"
+            }
+        }
+
+        # Verify fingerprint if trusted_keys provided
+        if trusted_keys != void {
+            remember fingerprint = sig_data["fingerprint"]
+            remember trusted = no
+
+            for trusted_fp in trusted_keys {
+                if trusted_fp == fingerprint {
+                    trusted = yes
+                    break
+                }
+            }
+
+            if not trusted {
+                exhale {
+                    "valid": no,
+                    "error": "Key fingerprint not in trusted list"
+                }
+            }
+        }
+
+        # Decode and verify signature
+        remember signature = base64_decode(sig_data["signature"])
+        remember valid = keypair["verify"](computed_hash, signature)
+
+        if valid {
+            exhale {
+                "valid": yes,
+                "key_id": key_id,
+                "fingerprint": sig_data["fingerprint"],
+                "timestamp": sig_data["timestamp"],
+                "algorithm": sig_data["algorithm"]
+            }
+        } else {
+            exhale {
+                "valid": no,
+                "error": "Invalid signature"
+            }
+        }
+    }
+
+    # Sign a single file
+    sigh sign_file_fn(file_path, key_id) {
+        remember keypair = keyring["get_key"](key_id)
+        if keypair == void {
+            raise "Key not found: ${key_id}"
+        }
+
+        remember file_data = read_file(file_path)
+        remember file_hash = hash_sha256(file_data)
+        remember signature = keypair["sign"](file_hash)
+
+        exhale {
+            "file": file_path,
+            "hash": file_hash,
+            "signature": base64_encode(signature),
+            "key_id": key_id
+        }
+    }
+
+    # Verify a single file signature
+    sigh verify_file_fn(file_path, signature_b64, key_id) {
+        remember keypair = keyring["get_key"](key_id)
+        if keypair == void {
+            raise "Key not found: ${key_id}"
+        }
+
+        remember file_data = read_file(file_path)
+        remember file_hash = hash_sha256(file_data)
+        remember signature = base64_decode(signature_b64)
+
+        remember valid = keypair["verify"](file_hash, signature)
+        exhale valid
+    }
+
+    # Assign methods
+    signer["sign_package"] = sign_package_fn
+    signer["verify_package"] = verify_package_fn
+    signer["sign_file"] = sign_file_fn
+    signer["verify_file"] = verify_file_fn
+
+    exhale signer
+}
+
+# ============================================================================
+# GPG INTEGRATION
+# ============================================================================
+
+sigh GPG_create() {
+    # Create GPG wrapper
+    remember gpg = {
+        "sign_file": void,
+        "verify_file": void,
+        "encrypt_file": void,
+        "decrypt_file": void,
+        "list_keys": void,
+        "import_key": void,
+        "export_key": void
+    }
+
+    # Internal: Run GPG command
+    sigh run_gpg(args) {
+        remember cmd = "gpg"
+        for arg in args {
+            cmd = "${cmd} ${arg}"
+        }
+
+        attempt {
+            remember result = execute_command(cmd, void)
+            exhale result
+        } catch error {
+            raise "GPG command failed: ${error}"
+        }
+    }
+
+    # Sign file with GPG
+    sigh sign_file_fn(file_path, key_id, detached) {
+        if detached == void {
+            detached = yes
+        }
+
+        remember args = ["--sign"]
+        if detached {
+            args = append(args, "--detach-sign")
+        }
+
+        if key_id != void {
+            args = append(args, "--local-user")
+            args = append(args, key_id)
+        }
+
+        args = append(args, "--armor")
+        args = append(args, file_path)
+
+        run_gpg(args)
+        exhale "${file_path}.asc"
+    }
+
+    # Verify GPG signature
+    sigh verify_file_fn(file_path, signature_path) {
+        if signature_path == void {
+            signature_path = "${file_path}.asc"
+        }
+
+        remember args = ["--verify", signature_path, file_path]
+
+        attempt {
+            run_gpg(args)
+            exhale yes
+        } catch error {
+            exhale no
+        }
+    }
+
+    # Encrypt file
+    sigh encrypt_file_fn(file_path, recipient, output_path) {
+        if output_path == void {
+            output_path = "${file_path}.gpg"
+        }
+
+        remember args = ["--encrypt", "--recipient", recipient, "--armor", "--output", output_path, file_path]
+        run_gpg(args)
+        exhale output_path
+    }
+
+    # Decrypt file
+    sigh decrypt_file_fn(file_path, output_path) {
+        if output_path == void {
+            import { replace } from "stdlib/strings.lament"
+            output_path = replace(file_path, ".gpg", "", 1)
+        }
+
+        remember args = ["--decrypt", "--output", output_path, file_path]
+        run_gpg(args)
+        exhale output_path
+    }
+
+    # List GPG keys
+    sigh list_keys_fn(secret) {
+        if secret == void {
+            secret = no
+        }
+
+        remember args = if secret then ["--list-secret-keys"] else ["--list-keys"]
+        exhale run_gpg(args)
+    }
+
+    # Import GPG key
+    sigh import_key_fn(key_file) {
+        remember args = ["--import", key_file]
+        run_gpg(args)
+    }
+
+    # Export GPG key
+    sigh export_key_fn(key_id, secret, output_file) {
+        if secret == void {
+            secret = no
+        }
+
+        remember args = void
+        if secret {
+            args = ["--export-secret-keys", "--armor"]
+        } else {
+            args = ["--export", "--armor"]
+        }
+
+        if key_id != void {
+            args = append(args, key_id)
+        }
+
+        if output_file != void {
+            args = append(args, "--output")
+            args = append(args, output_file)
+        }
+
+        exhale run_gpg(args)
+    }
+
+    # Assign methods
+    gpg["sign_file"] = sign_file_fn
+    gpg["verify_file"] = verify_file_fn
+    gpg["encrypt_file"] = encrypt_file_fn
+    gpg["decrypt_file"] = decrypt_file_fn
+    gpg["list_keys"] = list_keys_fn
+    gpg["import_key"] = import_key_fn
+    gpg["export_key"] = export_key_fn
+
+    exhale gpg
+}
+
+# ============================================================================
+# TRUST CHAIN
+# ============================================================================
+
+sigh TrustChain_create() {
+    # Create trust chain manager
+    remember chain = {
+        "trusted_keys": {},
+        "trust_key": void,
+        "revoke_key": void,
+        "is_trusted": void,
+        "get_trust_level": void,
+        "save": void,
+        "load": void
+    }
+
+    # Trust a key
+    sigh trust_key_fn(fingerprint, trust_level, name) {
+        # trust_level: "full", "marginal", "none"
+        if trust_level == void {
+            trust_level = "full"
+        }
+
+        chain["trusted_keys"][fingerprint] = {
+            "trust_level": trust_level,
+            "name": name,
+            "added_at": get_timestamp()
+        }
+    }
+
+    # Revoke trust for a key
+    sigh revoke_key_fn(fingerprint) {
+        if has_key(chain["trusted_keys"], fingerprint) {
+            chain["trusted_keys"] = dict_remove(chain["trusted_keys"], fingerprint)
+            exhale yes
+        }
+        exhale no
+    }
+
+    # Check if key is trusted
+    sigh is_trusted_fn(fingerprint) {
+        if has_key(chain["trusted_keys"], fingerprint) {
+            remember trust_level = chain["trusted_keys"][fingerprint]["trust_level"]
+            exhale trust_level == "full" or trust_level == "marginal"
+        }
+        exhale no
+    }
+
+    # Get trust level
+    sigh get_trust_level_fn(fingerprint) {
+        if has_key(chain["trusted_keys"], fingerprint) {
+            exhale chain["trusted_keys"][fingerprint]["trust_level"]
+        }
+        exhale "none"
+    }
+
+    # Save trust chain
+    sigh save_fn(file_path) {
+        if file_path == void {
+            file_path = "${get_home_dir()}/.lament/trustchain.json"
+        }
+
+        remember data = {
+            "trusted_keys": chain["trusted_keys"]
+        }
+
+        remember json_data = to_json(data, yes)
+        write_file(file_path, json_data)
+    }
+
+    # Load trust chain
+    sigh load_fn(file_path) {
+        if file_path == void {
+            file_path = "${get_home_dir()}/.lament/trustchain.json"
+        }
+
+        if not file_exists(file_path) {
+            exhale
+        }
+
+        remember content = read_file(file_path)
+        remember data = parse_json(content)
+
+        if has_key(data, "trusted_keys") {
+            chain["trusted_keys"] = data["trusted_keys"]
+        }
+    }
+
+    # Assign methods
+    chain["trust_key"] = trust_key_fn
+    chain["revoke_key"] = revoke_key_fn
+    chain["is_trusted"] = is_trusted_fn
+    chain["get_trust_level"] = get_trust_level_fn
+    chain["save"] = save_fn
+    chain["load"] = load_fn
+
+    # Load existing trust chain
+    load_fn(void)
+
+    exhale chain
+}
+
+# ============================================================================
+# TIMESTAMPING SERVICE
+# ============================================================================
+
+sigh TimestampService_create(service_url) {
+    # Create timestamp service client
+    if service_url == void {
+        service_url = "https://freetsa.org/tsr"
+    }
+
+    remember service = {
+        "url": service_url,
+        "timestamp": void,
+        "verify_timestamp": void
+    }
+
+    # Request timestamp for data
+    sigh timestamp_fn(data) {
+        # Create timestamp request
+        remember data_hash = hash_sha256(data)
+
+        remember request = {
+            "hash": data_hash,
+            "algorithm": "sha256",
+            "timestamp": get_timestamp()
+        }
+
+        attempt {
+            remember response = http_post(service["url"], to_json(request), void, 30)
+
+            if response["status"] == 200 {
+                remember ts_data = parse_json(response["body"])
+                exhale ts_data
+            } else {
+                raise "Timestamp service returned status ${response["status"]}"
+            }
+        } catch error {
+            # Fallback: local timestamp
+            exhale {
+                "hash": data_hash,
+                "timestamp": get_timestamp(),
+                "source": "local",
+                "error": error
+            }
+        }
+    }
+
+    # Verify timestamp
+    sigh verify_timestamp_fn(data, timestamp_data) {
+        remember data_hash = hash_sha256(data)
+
+        if timestamp_data["hash"] != data_hash {
+            exhale no
+        }
+
+        # In production, verify cryptographic timestamp signature
+        exhale yes
+    }
+
+    # Assign methods
+    service["timestamp"] = timestamp_fn
+    service["verify_timestamp"] = verify_timestamp_fn
+
+    exhale service
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh generate_signing_key(name, email, algorithm) {
+    # Generate a new signing key
+    if algorithm == void {
+        algorithm = "ed25519"
+    }
+
+    remember keypair = Ed25519KeyPair_create(void, void)
+    remember fingerprint = keypair["get_fingerprint"]()
+
+    remember key_info = KeyInfo_create(
+        fingerprint,
+        algorithm,
+        fingerprint,
+        get_timestamp(),
+        email,
+        name,
+        void
+    )
+
+    exhale {
+        "keypair": keypair,
+        "info": key_info
+    }
+}
+
+sigh format_fingerprint(fingerprint) {
+    # Format fingerprint for display (xxxx xxxx xxxx xxxx)
+    import { upper } from "stdlib/strings.lament"
+    remember fp = upper(fingerprint)
+    remember result = ""
+    remember i = 0
+
+    while i < string_length(fp) {
+        if i > 0 and i % 4 == 0 {
+            result = "${result} "
+        }
+        result = "${result}${char_at(fp, i)}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    KeyInfo_create,
+    Ed25519KeyPair_create,
+    Ed25519KeyPair_load_private_key,
+    Ed25519KeyPair_load_public_key,
+    KeyRing_create,
+    PackageSigner_create,
+    GPG_create,
+    TrustChain_create,
+    TimestampService_create,
+    generate_signing_key,
+    format_fingerprint
+}

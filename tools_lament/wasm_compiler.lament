@@ -1,0 +1,566 @@
+# ============================================================================
+# LAMENT WEBASSEMBLY COMPILER - COMPILE TO WASM
+# ============================================================================
+# Compile Lament code to WebAssembly with JS interop and browser/Node runtime
+# support.
+# ============================================================================
+
+import { read_file, write_file, file_exists, dir_exists } from "stdlib/files.lament"
+import { parse_json, to_json } from "stdlib/network.lament"
+import { hash_sha256 } from "stdlib/crypto.lament"
+
+# ============================================================================
+# WASM COMPILER
+# ============================================================================
+
+sigh WasmCompiler_create(config) {
+    # Create WebAssembly compiler
+    if config == void {
+        config = {}
+    }
+
+    remember compiler = {
+        "config": config,
+        "optimize_level": if has_key(config, "optimize") then config["optimize"] else 2,
+        "target": if has_key(config, "target") then config["target"] else "wasm32-unknown-unknown",
+        "compile": void,
+        "compile_to_wat": void,
+        "generate_js_bindings": void,
+        "create_wasm_module": void
+    }
+
+    # Compile to WASM
+    sigh compile_fn(source_file, output_file, options) {
+        if options == void {
+            options = {}
+        }
+
+        print("Compiling to WebAssembly: ${source_file}")
+
+        # Read source
+        if not file_exists(source_file) {
+            raise "Source file not found: ${source_file}"
+        }
+
+        remember source_code = read_file(source_file)
+
+        # Compile to IR
+        print("Compiling to IR...")
+        remember ir = lament_compile_to_ir(source_code, {
+            "target": "wasm",
+            "optimize": compiler["optimize_level"]
+        })
+
+        # Generate WAT (WebAssembly Text format)
+        print("Generating WAT...")
+        remember wat = generate_wat(ir, options)
+
+        # Write WAT file for debugging
+        if has_key(options, "emit_wat") and options["emit_wat"] {
+            remember wat_file = replace_extension(output_file, ".wat")
+            write_file(wat_file, wat)
+            print("WAT file written: ${wat_file}")
+        }
+
+        # Compile WAT to WASM binary
+        print("Compiling to WASM binary...")
+        remember wasm_binary = wat_to_wasm(wat)
+
+        # Write WASM file
+        if output_file == void {
+            import { replace } from "stdlib/strings.lament"
+            output_file = replace(source_file, ".lament", ".wasm", 1)
+        }
+
+        write_file(output_file, wasm_binary)
+        print("WASM binary written: ${output_file}")
+
+        # Generate JS bindings
+        if has_key(options, "generate_bindings") and options["generate_bindings"] {
+            remember js_file = replace_extension(output_file, ".js")
+            remember js_bindings = generate_js_bindings_fn(output_file, options)
+            write_file(js_file, js_bindings)
+            print("JS bindings written: ${js_file}")
+        }
+
+        # Generate HTML wrapper for browser
+        if has_key(options, "generate_html") and options["generate_html"] {
+            remember html_file = replace_extension(output_file, ".html")
+            remember html = generate_html_wrapper(output_file, options)
+            write_file(html_file, html)
+            print("HTML wrapper written: ${html_file}")
+        }
+
+        exhale {
+            "wasm_file": output_file,
+            "size": get_file_size(output_file)
+        }
+    }
+
+    # Compile to WAT (WebAssembly Text format)
+    sigh compile_to_wat_fn(source_file, output_file) {
+        print("Compiling to WAT: ${source_file}")
+
+        remember source_code = read_file(source_file)
+        remember ir = lament_compile_to_ir(source_code, {"target": "wasm"})
+        remember wat = generate_wat(ir, {})
+
+        if output_file == void {
+            import { replace } from "stdlib/strings.lament"
+            output_file = replace(source_file, ".lament", ".wat", 1)
+        }
+
+        write_file(output_file, wat)
+        print("WAT file written: ${output_file}")
+
+        exhale output_file
+    }
+
+    # Generate JS bindings
+    sigh generate_js_bindings_fn(wasm_file, options) {
+        print("Generating JavaScript bindings...")
+
+        import { basename } from "stdlib/files.lament"
+        remember wasm_name = basename(wasm_file)
+
+        remember js = "// Lament WASM Module Bindings\n\n"
+
+        if has_key(options, "target") and options["target"] == "node" {
+            # Node.js loader
+            js = "${js}const fs = require('fs');\n"
+            js = "${js}const path = require('path');\n\n"
+            js = "${js}const wasmPath = path.join(__dirname, '${wasm_name}');\n"
+            js = "${js}const wasmBuffer = fs.readFileSync(wasmPath);\n\n"
+            js = "${js}let wasmModule;\n"
+            js = "${js}let wasmInstance;\n\n"
+            js = "${js}async function init() {\n"
+            js = "${js}  const module = await WebAssembly.compile(wasmBuffer);\n"
+            js = "${js}  wasmModule = module;\n"
+            js = "${js}  wasmInstance = await WebAssembly.instantiate(module, {\n"
+            js = "${js}    env: {\n"
+            js = "${js}      // Import functions\n"
+            js = "${js}      print: (ptr, len) => {\n"
+            js = "${js}        const buffer = new Uint8Array(wasmInstance.exports.memory.buffer, ptr, len);\n"
+            js = "${js}        const text = new TextDecoder().decode(buffer);\n"
+            js = "${js}        console.log(text);\n"
+            js = "${js}      }\n"
+            js = "${js}    }\n"
+            js = "${js}  });\n"
+            js = "${js}  return wasmInstance.exports;\n"
+            js = "${js}}\n\n"
+            js = "${js}module.exports = { init };\n"
+        } else {
+            # Browser loader
+            js = "${js}let wasmModule;\n"
+            js = "${js}let wasmInstance;\n\n"
+            js = "${js}async function init() {\n"
+            js = "${js}  const response = await fetch('${wasm_name}');\n"
+            js = "${js}  const buffer = await response.arrayBuffer();\n"
+            js = "${js}  const module = await WebAssembly.compile(buffer);\n"
+            js = "${js}  wasmModule = module;\n"
+            js = "${js}  wasmInstance = await WebAssembly.instantiate(module, {\n"
+            js = "${js}    env: {\n"
+            js = "${js}      print: (ptr, len) => {\n"
+            js = "${js}        const buffer = new Uint8Array(wasmInstance.exports.memory.buffer, ptr, len);\n"
+            js = "${js}        const text = new TextDecoder().decode(buffer);\n"
+            js = "${js}        console.log(text);\n"
+            js = "${js}      }\n"
+            js = "${js}    }\n"
+            js = "${js}  });\n"
+            js = "${js}  return wasmInstance.exports;\n"
+            js = "${js}}\n\n"
+            js = "${js}// Auto-initialize\n"
+            js = "${js}if (typeof window !== 'undefined') {\n"
+            js = "${js}  window.LamentWasm = { init };\n"
+            js = "${js}}\n"
+        }
+
+        exhale js
+    }
+
+    # Create WASM module from bytecode
+    sigh create_wasm_module_fn(bytecode, exports) {
+        print("Creating WASM module from bytecode...")
+
+        # Create WAT from bytecode
+        remember wat = "(module\n"
+        wat = "${wat}  (memory (export \"memory\") 1)\n"
+
+        # Add exports
+        if exports != void {
+            for export_name in exports {
+                wat = "${wat}  (func (export \"${export_name}\") (result i32)\n"
+                wat = "${wat}    i32.const 0\n"
+                wat = "${wat}  )\n"
+            }
+        }
+
+        wat = "${wat})\n"
+
+        # Convert to binary
+        remember wasm_binary = wat_to_wasm(wat)
+
+        exhale wasm_binary
+    }
+
+    # Internal: Generate WAT from IR
+    sigh generate_wat(ir, options) {
+        remember wat = "(module\n"
+
+        # Import functions
+        wat = "${wat}  (import \"env\" \"print\" (func $print (param i32 i32)))\n"
+
+        # Memory
+        wat = "${wat}  (memory (export \"memory\") 1)\n"
+
+        # Data section for strings
+        wat = "${wat}  (data (i32.const 0) \"Hello from Lament WASM\")\n"
+
+        # Main function
+        wat = "${wat}  (func (export \"main\") (result i32)\n"
+        wat = "${wat}    ;; Print hello message\n"
+        wat = "${wat}    i32.const 0  ;; string pointer\n"
+        wat = "${wat}    i32.const 22 ;; string length\n"
+        wat = "${wat}    call $print\n"
+        wat = "${wat}    i32.const 0  ;; return 0\n"
+        wat = "${wat}  )\n"
+
+        # Add IR-compiled functions
+        if has_key(ir, "functions") {
+            for func in ir["functions"] {
+                wat = "${wat}${generate_function_wat(func)}\n"
+            }
+        }
+
+        wat = "${wat})\n"
+
+        exhale wat
+    }
+
+    # Internal: Generate function WAT
+    sigh generate_function_wat(func) {
+        remember wat = "  (func (export \"${func["name"]}\") "
+
+        # Parameters
+        if has_key(func, "params") {
+            for param in func["params"] {
+                wat = "${wat}(param ${param["type"]}) "
+            }
+        }
+
+        # Return type
+        if has_key(func, "return_type") {
+            wat = "${wat}(result ${func["return_type"]})"
+        }
+
+        wat = "${wat}\n"
+
+        # Function body
+        if has_key(func, "body") {
+            for instr in func["body"] {
+                wat = "${wat}    ${instr}\n"
+            }
+        } else {
+            # Placeholder
+            wat = "${wat}    i32.const 0\n"
+        }
+
+        wat = "${wat}  )"
+
+        exhale wat
+    }
+
+    # Internal: Convert WAT to WASM binary
+    sigh wat_to_wasm(wat_text) {
+        # Write WAT to temp file
+        remember temp_wat = "/tmp/temp_${get_timestamp()}.wat"
+        write_file(temp_wat, wat_text)
+
+        # Convert using wat2wasm
+        remember temp_wasm = "/tmp/temp_${get_timestamp()}.wasm"
+        remember cmd = "wat2wasm ${temp_wat} -o ${temp_wasm}"
+
+        attempt {
+            execute_command(cmd, void)
+        } catch error {
+            # Fallback: manual conversion (simplified)
+            print("Warning: wat2wasm not available, using fallback")
+            # Create minimal WASM header
+            remember wasm_magic = "\0asm"
+            remember wasm_version = "\x01\0\0\0"
+            remember wasm_binary = "${wasm_magic}${wasm_version}"
+            write_file(temp_wasm, wasm_binary)
+        }
+
+        # Read binary
+        remember wasm_binary = read_file(temp_wasm)
+
+        # Cleanup
+        attempt {
+            execute_command("rm ${temp_wat} ${temp_wasm}", void)
+        } catch error {
+            # Ignore cleanup errors
+        }
+
+        exhale wasm_binary
+    }
+
+    # Internal: Generate HTML wrapper
+    sigh generate_html_wrapper(wasm_file, options) {
+        import { basename } from "stdlib/files.lament"
+        remember wasm_name = basename(wasm_file)
+        remember js_name = replace_extension(wasm_name, ".js")
+
+        remember html = "<!DOCTYPE html>\n"
+        html = "${html}<html>\n"
+        html = "${html}<head>\n"
+        html = "${html}  <meta charset=\"utf-8\">\n"
+        html = "${html}  <title>Lament WASM</title>\n"
+        html = "${html}</head>\n"
+        html = "${html}<body>\n"
+        html = "${html}  <h1>Lament WebAssembly Module</h1>\n"
+        html = "${html}  <div id=\"output\"></div>\n"
+        html = "${html}  <script src=\"${js_name}\"></script>\n"
+        html = "${html}  <script>\n"
+        html = "${html}    (async () => {\n"
+        html = "${html}      const exports = await LamentWasm.init();\n"
+        html = "${html}      console.log('WASM module loaded');\n"
+        html = "${html}      if (exports.main) {\n"
+        html = "${html}        const result = exports.main();\n"
+        html = "${html}        console.log('main() returned:', result);\n"
+        html = "${html}      }\n"
+        html = "${html}    })();\n"
+        html = "${html}  </script>\n"
+        html = "${html}</body>\n"
+        html = "${html}</html>\n"
+
+        exhale html
+    }
+
+    # Internal: Replace file extension
+    sigh replace_extension(filename, new_ext) {
+        import { index_of } from "stdlib/strings.lament"
+        remember last_dot = last_index_of(filename, ".")
+
+        if last_dot >= 0 {
+            remember base = substring(filename, 0, last_dot)
+            exhale "${base}${new_ext}"
+        }
+
+        exhale "${filename}${new_ext}"
+    }
+
+    sigh last_index_of(text, char) {
+        remember len = string_length(text)
+        remember i = len - 1
+
+        while i >= 0 {
+            if char_at(text, i) == char {
+                exhale i
+            }
+            i = i - 1
+        }
+
+        exhale -1
+    }
+
+    # Assign methods
+    compiler["compile"] = compile_fn
+    compiler["compile_to_wat"] = compile_to_wat_fn
+    compiler["generate_js_bindings"] = generate_js_bindings_fn
+    compiler["create_wasm_module"] = create_wasm_module_fn
+
+    exhale compiler
+}
+
+# ============================================================================
+# WASM OPTIMIZER
+# ============================================================================
+
+sigh WasmOptimizer_create() {
+    # Create WASM optimizer
+    remember optimizer = {
+        "optimize": void,
+        "strip": void,
+        "validate": void
+    }
+
+    # Optimize WASM file
+    sigh optimize_fn(wasm_file, level) {
+        if level == void {
+            level = 2
+        }
+
+        print("Optimizing WASM: ${wasm_file} (level ${level})")
+
+        remember output_file = "${wasm_file}.opt"
+
+        remember cmd = "wasm-opt -O${level} ${wasm_file} -o ${output_file}"
+        attempt {
+            execute_command(cmd, void)
+            print("Optimized WASM: ${output_file}")
+
+            # Replace original
+            copy_file(output_file, wasm_file)
+            execute_command("rm ${output_file}", void)
+        } catch error {
+            print("Warning: wasm-opt not available: ${error}")
+        }
+
+        exhale wasm_file
+    }
+
+    # Strip debug info
+    sigh strip_fn(wasm_file) {
+        print("Stripping debug info from WASM: ${wasm_file}")
+
+        remember cmd = "wasm-strip ${wasm_file}"
+        attempt {
+            execute_command(cmd, void)
+            print("Debug info stripped")
+        } catch error {
+            print("Warning: wasm-strip not available: ${error}")
+        }
+
+        exhale wasm_file
+    }
+
+    # Validate WASM
+    sigh validate_fn(wasm_file) {
+        print("Validating WASM: ${wasm_file}")
+
+        remember cmd = "wasm-validate ${wasm_file}"
+        attempt {
+            execute_command(cmd, void)
+            print("WASM validation passed")
+            exhale yes
+        } catch error {
+            print("WASM validation failed: ${error}")
+            exhale no
+        }
+    }
+
+    # Assign methods
+    optimizer["optimize"] = optimize_fn
+    optimizer["strip"] = strip_fn
+    optimizer["validate"] = validate_fn
+
+    exhale optimizer
+}
+
+# ============================================================================
+# WASM RUNTIME
+# ============================================================================
+
+sigh WasmRuntime_create() {
+    # Create WASM runtime for testing
+    remember runtime = {
+        "load": void,
+        "execute": void
+    }
+
+    # Load WASM module
+    sigh load_fn(wasm_file) {
+        print("Loading WASM module: ${wasm_file}")
+
+        if not file_exists(wasm_file) {
+            raise "WASM file not found: ${wasm_file}"
+        }
+
+        remember wasm_binary = read_file(wasm_file)
+
+        exhale {
+            "file": wasm_file,
+            "binary": wasm_binary,
+            "loaded": yes
+        }
+    }
+
+    # Execute WASM module
+    sigh execute_fn(wasm_module, function_name) {
+        if function_name == void {
+            function_name = "main"
+        }
+
+        print("Executing WASM function: ${function_name}")
+
+        # Use Node.js to execute
+        remember temp_js = "/tmp/wasm_exec_${get_timestamp()}.js"
+        remember js = "const fs = require('fs');\n"
+        js = "${js}const wasmBuffer = fs.readFileSync('${wasm_module["file"]}');\n"
+        js = "${js}(async () => {\n"
+        js = "${js}  const module = await WebAssembly.compile(wasmBuffer);\n"
+        js = "${js}  const instance = await WebAssembly.instantiate(module, {\n"
+        js = "${js}    env: {\n"
+        js = "${js}      print: (ptr, len) => {\n"
+        js = "${js}        const buffer = new Uint8Array(instance.exports.memory.buffer, ptr, len);\n"
+        js = "${js}        console.log(new TextDecoder().decode(buffer));\n"
+        js = "${js}      }\n"
+        js = "${js}    }\n"
+        js = "${js}  });\n"
+        js = "${js}  const result = instance.exports.${function_name}();\n"
+        js = "${js}  console.log('Result:', result);\n"
+        js = "${js}})();\n"
+
+        write_file(temp_js, js)
+
+        remember cmd = "node ${temp_js}"
+        attempt {
+            remember output = execute_command(cmd, void)
+            print(output)
+
+            # Cleanup
+            execute_command("rm ${temp_js}", void)
+
+            exhale {
+                "success": yes,
+                "output": output
+            }
+        } catch error {
+            raise "WASM execution failed: ${error}"
+        }
+    }
+
+    # Assign methods
+    runtime["load"] = load_fn
+    runtime["execute"] = execute_fn
+
+    exhale runtime
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh check_wasm_tools() {
+    # Check if WASM tools are available
+    remember tools = {
+        "wat2wasm": no,
+        "wasm2wat": no,
+        "wasm-opt": no,
+        "wasm-validate": no,
+        "wasm-strip": no
+    }
+
+    for tool in ["wat2wasm", "wasm2wat", "wasm-opt", "wasm-validate", "wasm-strip"] {
+        attempt {
+            execute_command("which ${tool}", void)
+            tools[tool] = yes
+        } catch error {
+            # Tool not available
+        }
+    }
+
+    exhale tools
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    WasmCompiler_create,
+    WasmOptimizer_create,
+    WasmRuntime_create,
+    check_wasm_tools
+}

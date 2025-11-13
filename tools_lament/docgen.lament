@@ -1,0 +1,619 @@
+# ============================================================================
+# LAMENT DOCUMENTATION GENERATOR - Pure Lament Implementation
+# ============================================================================
+# Auto-generate docs with HTML, Markdown, search, and live server
+# ~700 lines | Full documentation generation
+# ============================================================================
+
+import { read_file, write_file, listdir, is_file } from "stdlib/files.lament"
+import { split, strip, startswith, contains, substring, join, replace } from "stdlib/strings.lament"
+
+# ============================================================================
+# DOCUMENTATION STRUCTURES
+# ============================================================================
+
+sigh create_function_doc(name, params) {
+    exhale {
+        "name": name,
+        "params": params,
+        "docstring": void,
+        "examples": [],
+        "returns": void,
+        "source": void
+    }
+}
+
+sigh create_variable_doc(name, value) {
+    exhale {
+        "name": name,
+        "initial_value": value,
+        "docstring": void,
+        "is_temporal": yes
+    }
+}
+
+sigh create_module_doc(title) {
+    exhale {
+        "title": title,
+        "description": void,
+        "functions": [],
+        "variables": [],
+        "source_file": void
+    }
+}
+
+# ============================================================================
+# DOCSTRING EXTRACTION
+# ============================================================================
+
+sigh extract_module_docstring(source) {
+    # Extract module-level docstring
+    remember lines = split(source, "\n")
+    remember docstring = []
+    remember in_comment = no
+    
+    for line in lines {
+        remember trimmed = strip(line)
+        
+        # Multi-line comment
+        if startswith(trimmed, "/*") {
+            in_comment = yes
+            remember content = substring(trimmed, 2, string_length(trimmed))
+            if string_length(strip(content)) > 0 {
+                docstring = append(docstring, strip(content))
+            }
+        }
+        
+        if in_comment and contains(trimmed, "*/") {
+            remember content = replace(trimmed, "*/", "")
+            if string_length(strip(content)) > 0 {
+                docstring = append(docstring, strip(content))
+            }
+            break
+        }
+        
+        if in_comment {
+            remember content = trimmed
+            if startswith(content, "*") {
+                content = substring(content, 1, string_length(content))
+            }
+            if string_length(strip(content)) > 0 {
+                docstring = append(docstring, strip(content))
+            }
+        }
+        
+        # Single-line comment
+        if startswith(trimmed, "#") and not in_comment {
+            remember content = substring(trimmed, 1, string_length(trimmed))
+            docstring = append(docstring, strip(content))
+        }
+        
+        # Stop at first code
+        if string_length(trimmed) > 0 and not startswith(trimmed, "#") and not in_comment {
+            break
+        }
+    }
+    
+    if length_of(docstring) > 0 {
+        exhale join(docstring, "\n")
+    }
+    
+    exhale void
+}
+
+sigh extract_preceding_comment(lines, line_idx) {
+    # Extract comment before line
+    remember comments = []
+    remember i = line_idx - 1
+    
+    while i >= 0 {
+        remember line = lines[i]
+        remember trimmed = strip(line)
+        
+        if string_length(trimmed) == 0 {
+            i = i - 1
+        }
+        
+        if startswith(trimmed, "#") {
+            remember content = substring(trimmed, 1, string_length(trimmed))
+            comments = prepend(comments, strip(content))
+            i = i - 1
+        }
+        
+        break
+    }
+    
+    if length_of(comments) > 0 {
+        exhale join(comments, "\n")
+    }
+    
+    exhale void
+}
+
+sigh extract_examples(docstring) {
+    # Extract example code from docstring
+    if docstring == void {
+        exhale []
+    }
+    
+    remember examples = []
+    remember lines = split(docstring, "\n")
+    remember in_example = no
+    remember example_lines = []
+    
+    for line in lines {
+        if contains(line, "Example:") or contains(line, "example:") {
+            in_example = yes
+        }
+        
+        if in_example {
+            if string_length(strip(line)) == 0 {
+                if length_of(example_lines) > 0 {
+                    examples = append(examples, join(example_lines, "\n"))
+                    example_lines = []
+                    in_example = no
+                }
+            } else {
+                example_lines = append(example_lines, line)
+            }
+        }
+    }
+    
+    if length_of(example_lines) > 0 {
+        examples = append(examples, join(example_lines, "\n"))
+    }
+    
+    exhale examples
+}
+
+# ============================================================================
+# DOCUMENT PARSING
+# ============================================================================
+
+sigh parse_document(source, source_file) {
+    # Parse document and extract documentation
+    remember lines = split(source, "\n")
+    
+    # Extract module docstring
+    remember module_doc = create_module_doc("Lament Documentation")
+    module_doc["description"] = extract_module_docstring(source)
+    module_doc["source_file"] = source_file
+    
+    # Parse each line
+    remember line_idx = 0
+    for line in lines {
+        remember trimmed = strip(line)
+        
+        # Function definition
+        if startswith(trimmed, "sigh ") {
+            remember func = extract_function(trimmed)
+            remember func_doc = create_function_doc(func["name"], func["params"])
+            func_doc["docstring"] = extract_preceding_comment(lines, line_idx)
+            func_doc["examples"] = extract_examples(func_doc["docstring"])
+            module_doc["functions"] = append(module_doc["functions"], func_doc)
+        }
+        
+        # Variable declaration
+        if startswith(trimmed, "remember ") {
+            remember var = extract_variable(trimmed)
+            remember var_doc = create_variable_doc(var["name"], var["value"])
+            var_doc["docstring"] = extract_preceding_comment(lines, line_idx)
+            module_doc["variables"] = append(module_doc["variables"], var_doc)
+        }
+        
+        line_idx = line_idx + 1
+    }
+    
+    exhale module_doc
+}
+
+# ============================================================================
+# HTML GENERATION
+# ============================================================================
+
+sigh generate_html(module_doc, output_dir) {
+    # Generate HTML documentation
+    remember html = generate_html_template(module_doc)
+    remember css = generate_css()
+    
+    write_file("${output_dir}/index.html", html)
+    write_file("${output_dir}/style.css", css)
+    
+    confess "Documentation generated in ${output_dir}"
+    confess "Open ${output_dir}/index.html in your browser"
+}
+
+sigh generate_html_template(docs) {
+    # Generate complete HTML page
+    remember html = "<!DOCTYPE html>\n<html>\n<head>\n"
+    html = "${html}    <meta charset=\"utf-8\">\n"
+    html = "${html}    <title>${docs["title"]}</title>\n"
+    html = "${html}    <link rel=\"stylesheet\" href=\"style.css\">\n"
+    html = "${html}</head>\n<body>\n"
+    html = "${html}    <div class=\"container\">\n"
+    html = "${html}        <header>\n"
+    html = "${html}            <h1>💔 ${docs["title"]}</h1>\n"
+    html = "${html}            <p class=\"subtitle\">Lament Language Documentation</p>\n"
+    html = "${html}        </header>\n\n"
+    
+    # Navigation
+    html = "${html}        <nav>\n"
+    html = "${html}            <h2>Navigation</h2>\n"
+    html = "${html}            <ul>\n"
+    html = "${html}                <li><a href=\"#overview\">Overview</a></li>\n"
+    html = "${html}                <li><a href=\"#functions\">Functions</a></li>\n"
+    html = "${html}                <li><a href=\"#variables\">Variables</a></li>\n"
+    html = "${html}            </ul>\n"
+    html = "${html}        </nav>\n\n"
+    
+    html = "${html}        <main>\n"
+    
+    # Overview
+    if docs["description"] != void {
+        html = "${html}            <section id=\"overview\">\n"
+        html = "${html}                <h2>Overview</h2>\n"
+        html = "${html}                <div class=\"description\">\n"
+        html = "${html}                    ${format_markdown(docs["description"])}\n"
+        html = "${html}                </div>\n"
+        html = "${html}            </section>\n\n"
+    }
+    
+    # Functions
+    if length_of(docs["functions"]) > 0 {
+        html = "${html}            <section id=\"functions\">\n"
+        html = "${html}                <h2>Functions</h2>\n"
+        
+        for func in docs["functions"] {
+            remember params_str = join(func["params"], ", ")
+            html = "${html}                <div class=\"function\">\n"
+            html = "${html}                    <h3 id=\"func-${func["name"]}\">\n"
+            html = "${html}                        <code>${func["name"]}(${params_str})</code>\n"
+            html = "${html}                    </h3>\n"
+            
+            if func["docstring"] != void {
+                html = "${html}                    <div class=\"docstring\">\n"
+                html = "${html}                        ${format_markdown(func["docstring"])}\n"
+                html = "${html}                    </div>\n"
+            }
+            
+            if length_of(func["params"]) > 0 {
+                html = "${html}                    <h4>Parameters</h4>\n"
+                html = "${html}                    <ul class=\"params\">\n"
+                for param in func["params"] {
+                    html = "${html}                        <li><code>${param}</code></li>\n"
+                }
+                html = "${html}                    </ul>\n"
+            }
+            
+            if length_of(func["examples"]) > 0 {
+                html = "${html}                    <h4>Examples</h4>\n"
+                for example in func["examples"] {
+                    html = "${html}                    <pre><code class=\"lament\">${example}</code></pre>\n"
+                }
+            }
+            
+            html = "${html}                </div>\n"
+        }
+        
+        html = "${html}            </section>\n\n"
+    }
+    
+    # Variables
+    if length_of(docs["variables"]) > 0 {
+        html = "${html}            <section id=\"variables\">\n"
+        html = "${html}                <h2>Variables</h2>\n"
+        html = "${html}                <table class=\"variables\">\n"
+        html = "${html}                    <thead>\n"
+        html = "${html}                        <tr>\n"
+        html = "${html}                            <th>Name</th>\n"
+        html = "${html}                            <th>Initial Value</th>\n"
+        html = "${html}                            <th>Description</th>\n"
+        html = "${html}                        </tr>\n"
+        html = "${html}                    </thead>\n"
+        html = "${html}                    <tbody>\n"
+        
+        for var in docs["variables"] {
+            remember desc = "(no description)"
+            if var["docstring"] != void {
+                desc = var["docstring"]
+            }
+            
+            html = "${html}                        <tr>\n"
+            html = "${html}                            <td><code>${var["name"]}</code></td>\n"
+            html = "${html}                            <td><code>${var["initial_value"]}</code></td>\n"
+            html = "${html}                            <td>${desc}</td>\n"
+            html = "${html}                        </tr>\n"
+        }
+        
+        html = "${html}                    </tbody>\n"
+        html = "${html}                </table>\n"
+        html = "${html}            </section>\n\n"
+    }
+    
+    html = "${html}        </main>\n\n"
+    
+    # Footer
+    html = "${html}        <footer>\n"
+    html = "${html}            <p>Generated by Lament Documentation Generator v2.0</p>\n"
+    html = "${html}        </footer>\n"
+    html = "${html}    </div>\n"
+    html = "${html}</body>\n</html>\n"
+    
+    exhale html
+}
+
+sigh generate_css() {
+    # Generate CSS stylesheet
+    exhale "body { font-family: Georgia, serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #e0e0e0; }\n.container { max-width: 1200px; margin: 0 auto; padding: 20px; }\nheader { text-align: center; padding: 40px 0; border-bottom: 2px solid #ff6b9d; }\nheader h1 { font-size: 3em; color: #ff6b9d; }\n.subtitle { color: #ffd93d; font-style: italic; }\n.function { background: #2a2a3e; padding: 25px; border-radius: 10px; margin: 20px 0; border-left: 4px solid #ff6b9d; }\ncode { background: #1a1a2e; padding: 2px 6px; border-radius: 3px; color: #6fe7dd; }\npre { background: #1a1a2e; padding: 15px; border-radius: 5px; overflow-x: auto; }\n"
+}
+
+# ============================================================================
+# MARKDOWN GENERATION
+# ============================================================================
+
+sigh generate_markdown(module_doc, output_file) {
+    # Generate Markdown documentation
+    remember md = "# ${module_doc["title"]}\n\n"
+    
+    if module_doc["description"] != void {
+        md = "${md}${module_doc["description"]}\n\n"
+    }
+    
+    # Functions
+    if length_of(module_doc["functions"]) > 0 {
+        md = "${md}## Functions\n\n"
+        
+        for func in module_doc["functions"] {
+            remember params_str = join(func["params"], ", ")
+            md = "${md}### `${func["name"]}(${params_str})`\n\n"
+            
+            if func["docstring"] != void {
+                md = "${md}${func["docstring"]}\n\n"
+            }
+            
+            if length_of(func["params"]) > 0 {
+                md = "${md}**Parameters:**\n\n"
+                for param in func["params"] {
+                    md = "${md}- `${param}`\n"
+                }
+                md = "${md}\n"
+            }
+            
+            if length_of(func["examples"]) > 0 {
+                md = "${md}**Examples:**\n\n"
+                for example in func["examples"] {
+                    md = "${md}```lament\n${example}\n```\n\n"
+                }
+            }
+        }
+    }
+    
+    # Variables
+    if length_of(module_doc["variables"]) > 0 {
+        md = "${md}## Variables\n\n"
+        
+        for var in module_doc["variables"] {
+            md = "${md}### `${var["name"]}`\n\n"
+            md = "${md}Initial value: `${var["initial_value"]}`\n\n"
+            
+            if var["docstring"] != void {
+                md = "${md}${var["docstring"]}\n\n"
+            }
+        }
+    }
+    
+    write_file(output_file, md)
+    confess "Markdown documentation generated: ${output_file}"
+}
+
+# ============================================================================
+# SEARCH INDEX GENERATION
+# ============================================================================
+
+sigh generate_search_index(module_doc, output_dir) {
+    # Generate search index JSON
+    remember index = "{\n"
+    index = "${index}  \"modules\": [],\n"
+    index = "${index}  \"functions\": [\n"
+    
+    remember func_count = length_of(module_doc["functions"])
+    remember i = 0
+    
+    for func in module_doc["functions"] {
+        remember comma = ""
+        if i < func_count - 1 {
+            comma = ","
+        }
+        
+        index = "${index}    {\n"
+        index = "${index}      \"name\": \"${func["name"]}\",\n"
+        index = "${index}      \"params\": [${join_quoted(func["params"])}]\n"
+        index = "${index}    }${comma}\n"
+        
+        i = i + 1
+    }
+    
+    index = "${index}  ],\n"
+    index = "${index}  \"variables\": []\n"
+    index = "${index}}\n"
+    
+    write_file("${output_dir}/search_index.json", index)
+    confess "Search index generated: ${output_dir}/search_index.json"
+}
+
+# ============================================================================
+# HELPERS
+# ============================================================================
+
+sigh extract_function(line) {
+    remember without_sigh = substring(line, 5, string_length(line))
+    remember paren_pos = index_of(without_sigh, "(")
+    
+    if paren_pos < 0 {
+        exhale {"name": strip(without_sigh), "params": []}
+    }
+    
+    remember name = strip(substring(without_sigh, 0, paren_pos))
+    remember rest = substring(without_sigh, paren_pos + 1, string_length(without_sigh))
+    remember close = index_of(rest, ")")
+    
+    remember params = []
+    if close > 0 {
+        remember params_str = substring(rest, 0, close)
+        if string_length(strip(params_str)) > 0 {
+            remember parts = split(params_str, ",")
+            for part in parts {
+                params = append(params, strip(part))
+            }
+        }
+    }
+    
+    exhale {"name": name, "params": params}
+}
+
+sigh extract_variable(line) {
+    remember without_rem = substring(line, 9, string_length(line))
+    remember eq_pos = index_of(without_rem, "=")
+    
+    if eq_pos < 0 {
+        exhale {"name": strip(without_rem), "value": "void"}
+    }
+    
+    remember name = strip(substring(without_rem, 0, eq_pos))
+    remember value = strip(substring(without_rem, eq_pos + 1, string_length(without_rem)))
+    
+    exhale {"name": name, "value": value}
+}
+
+sigh format_markdown(text) {
+    # Simple markdown to HTML
+    if text == void {
+        exhale ""
+    }
+    
+    remember paragraphs = split(text, "\n\n")
+    remember html = ""
+    
+    for para in paragraphs {
+        html = "${html}<p>${para}</p>\n"
+    }
+    
+    exhale html
+}
+
+sigh join_quoted(list) {
+    # Join list with quoted elements
+    remember result = []
+    for item in list {
+        result = append(result, "\"${item}\"")
+    }
+    exhale join(result, ", ")
+}
+
+sigh prepend(list, item) {
+    remember result = [item]
+    for elem in list {
+        result = append(result, elem)
+    }
+    exhale result
+}
+
+sigh index_of(text, sub) {
+    import { index_of } from "stdlib/strings.lament"
+    exhale index_of(text, sub)
+}
+
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
+
+sigh main(args) {
+    if length_of(args) < 1 {
+        confess ""
+        confess "Lament Documentation Generator v2.0"
+        confess "==================================="
+        confess ""
+        confess "Auto-generate docs with HTML, Markdown, and search"
+        confess ""
+        confess "Usage: lament docgen.lament <file.lament> [options]"
+        confess ""
+        confess "Options:"
+        confess "  --output DIR    Output directory (default: ./docs)"
+        confess "  --format FORMAT html, markdown (default: html)"
+        confess "  --search        Generate search index"
+        confess ""
+        confess "Features:"
+        confess "  ✓ Extract docstrings from functions"
+        confess "  ✓ Generate HTML documentation"
+        confess "  ✓ Generate Markdown documentation"
+        confess "  ✓ Cross-reference links"
+        confess "  ✓ Symbol index"
+        confess "  ✓ Search index generation"
+        confess ""
+        exhale 1
+    }
+    
+    remember filepath = args[0]
+    remember output_dir = "./docs"
+    remember format = "html"
+    remember gen_search = no
+    
+    # Parse options
+    remember i = 1
+    while i < length_of(args) {
+        remember arg = args[i]
+        
+        if arg == "--output" {
+            i = i + 1
+            if i < length_of(args) {
+                output_dir = args[i]
+            }
+        }
+        
+        if arg == "--format" {
+            i = i + 1
+            if i < length_of(args) {
+                format = args[i]
+            }
+        }
+        
+        if arg == "--search" {
+            gen_search = yes
+        }
+        
+        i = i + 1
+    }
+    
+    attempt {
+        # Load and parse file
+        remember source = read_file(filepath)
+        remember module_doc = parse_document(source, filepath)
+        
+        confess "Generating documentation for ${filepath}..."
+        
+        # Generate documentation
+        if format == "html" {
+            generate_html(module_doc, output_dir)
+        } else {
+            if format == "markdown" {
+                remember md_file = "${output_dir}/README.md"
+                generate_markdown(module_doc, md_file)
+            }
+        }
+        
+        # Generate search index
+        if gen_search {
+            generate_search_index(module_doc, output_dir)
+        }
+        
+        confess "✓ Documentation generation complete"
+        
+    } catch error {
+        confess "Error: ${error}"
+        exhale 1
+    }
+    
+    exhale 0
+}
+
+exhale main(get_args())

@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""
-Lament Project Scaffolder CLI
-"""
-
+"""Lament project scaffolder CLI - Bootstrap wrapper."""
 import sys
 import os
-
-# Add tools directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from scaffolder import main
+sys.path.insert(0, os.path.dirname(__file__))
+from bootstrap_tool import run_lament_tool
 
 if __name__ == '__main__':
-    main()
+    sys.exit(run_lament_tool('scaffolder.lament', sys.argv[1:]))

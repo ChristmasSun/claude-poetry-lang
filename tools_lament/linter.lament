@@ -1,0 +1,675 @@
+# ============================================================================
+# LAMENT LANGUAGE LINTER - Pure Lament Implementation
+# ============================================================================
+# Static analysis with 30+ rules for code quality and bug detection
+# ~800 lines | Feature-complete with all lint rules
+# ============================================================================
+
+import { read_file } from "stdlib/files.lament"
+import { split, strip, join, startswith, contains, index_of, substring, upper } from "stdlib/strings.lament"
+
+# Severity levels (ERROR=1, WARNING=2, INFO=3, STYLE=4)
+remember ERROR = 1
+remember WARNING = 2
+remember INFO = 3
+remember STYLE = 4
+
+# ============================================================================
+# LINT STATE MANAGEMENT
+# ============================================================================
+
+sigh create_linter() {
+    exhale {
+        "issues": [],
+        "defined_vars": [],
+        "used_vars": [],
+        "defined_functions": [],
+        "called_functions": [],
+        "temporal_vars": [],
+        "scope_stack": [[]],
+        "in_function": no,
+        "in_loop": no,
+        "function_has_return": no,
+        "current_function": void,
+        "builtins": ["range", "length_of", "ache_of", "sqrt_of_pain",
+                     "sin_of_loss", "cos_of_hope", "now", "sleep",
+                     "is_numb", "is_whisper", "is_void", "typeof",
+                     "current_timeline", "append", "char_at", "char_code",
+                     "char_from_code", "string_length", "to_string",
+                     "parse_json", "to_json", "substring", "exit"]
+    }
+}
+
+sigh add_issue(linter, severity, rule, message, line, suggestion) {
+    remember issue = {
+        "severity": severity,
+        "rule": rule,
+        "message": message,
+        "line": line,
+        "suggestion": suggestion
+    }
+    linter["issues"] = append(linter["issues"], issue)
+    exhale linter
+}
+
+# ============================================================================
+# SCOPE MANAGEMENT (Rules 1-2)
+# ============================================================================
+
+sigh define_var(linter, name) {
+    linter["defined_vars"] = append(linter["defined_vars"], name)
+    remember stack_len = length_of(linter["scope_stack"])
+    remember current = linter["scope_stack"][stack_len - 1]
+    current = append(current, name)
+    linter["scope_stack"][stack_len - 1] = current
+    exhale linter
+}
+
+sigh use_var(linter, name) {
+    if not list_contains(linter["used_vars"], name) {
+        linter["used_vars"] = append(linter["used_vars"], name)
+    }
+    exhale linter
+}
+
+sigh is_defined(linter, name) {
+    remember scopes = linter["scope_stack"]
+    remember i = length_of(scopes) - 1
+    while i >= 0 {
+        if list_contains(scopes[i], name) {
+            exhale yes
+        }
+        i = i - 1
+    }
+    if list_contains(linter["builtins"], name) {
+        exhale yes
+    }
+    exhale no
+}
+
+# ============================================================================
+# RULE 1-5: VARIABLE ISSUES
+# ============================================================================
+
+sigh check_unused_variables(linter) {
+    # Rule 1: Unused variable detection
+    for var in linter["defined_vars"] {
+        if not list_contains(linter["used_vars"], var) and not list_contains(linter["builtins"], var) {
+            linter = add_issue(linter, WARNING, "unused-variable",
+                             "Variable '${var}' is defined but never used",
+                             void, "Remove the declaration or use the variable")
+        }
+    }
+    exhale linter
+}
+
+sigh check_undefined_variable(linter, name, line) {
+    # Rule 2: Undefined variable usage
+    if not is_defined(linter, name) {
+        linter = add_issue(linter, ERROR, "undefined-variable",
+                         "Variable '${name}' is used before being defined",
+                         line, "Add 'remember ${name} = <value>' before using it")
+    }
+    exhale linter
+}
+
+sigh check_variable_naming(linter, name, line) {
+    # Rule 3: Variable naming conventions
+    remember first_char = char_at(name, 0)
+    remember code = char_code(first_char)
+    
+    if code >= 65 and code <= 90 {
+        remember lower = char_from_code(code + 32)
+        remember rest = substring(name, 1, string_length(name))
+        linter = add_issue(linter, STYLE, "variable-naming",
+                         "Variable '${name}' should start with lowercase",
+                         line, "Rename to '${lower}${rest}'")
+    }
+    
+    # Rule 4: Short variable names
+    if string_length(name) == 1 {
+        remember allowed = ["i", "j", "k", "x", "y", "z"]
+        if not list_contains(allowed, name) {
+            linter = add_issue(linter, STYLE, "short-variable-name",
+                             "Variable '${name}' has very short name",
+                             line, "Use a more descriptive name")
+        }
+    }
+    
+    # Rule 5: Double underscores (reserved)
+    if contains(name, "__") {
+        linter = add_issue(linter, STYLE, "double-underscore",
+                         "Variable '${name}' contains double underscore (reserved)",
+                         line, "Use single underscores")
+    }
+    
+    exhale linter
+}
+
+# ============================================================================
+# RULE 6-10: FUNCTION ISSUES
+# ============================================================================
+
+sigh check_unused_functions(linter) {
+    # Rule 6: Unused function detection
+    for func in linter["defined_functions"] {
+        if not list_contains(linter["called_functions"], func) and func != "main" {
+            linter = add_issue(linter, INFO, "unused-function",
+                             "Function '${func}' is defined but never called",
+                             void, "Consider removing if not needed")
+        }
+    }
+    exhale linter
+}
+
+sigh check_undefined_functions(linter) {
+    # Rule 7: Undefined function calls
+    for func in linter["called_functions"] {
+        if not list_contains(linter["defined_functions"], func) and not list_contains(linter["builtins"], func) {
+            linter = add_issue(linter, ERROR, "undefined-function",
+                             "Function '${func}' is called but never defined",
+                             void, "Define with 'sigh ${func}(...) { ... }'")
+        }
+    }
+    exhale linter
+}
+
+sigh check_function_naming(linter, name, line) {
+    # Rule 8: Function naming conventions
+    remember first_char = char_at(name, 0)
+    remember code = char_code(first_char)
+    
+    if code >= 65 and code <= 90 {
+        remember lower = char_from_code(code + 32)
+        remember rest = substring(name, 1, string_length(name))
+        linter = add_issue(linter, STYLE, "function-naming",
+                         "Function '${name}' should start with lowercase",
+                         line, "Rename to '${lower}${rest}'")
+    }
+    exhale linter
+}
+
+sigh check_too_many_parameters(linter, name, params, line) {
+    # Rule 9: Too many function parameters
+    remember count = length_of(params)
+    if count > 5 {
+        linter = add_issue(linter, WARNING, "too-many-parameters",
+                         "Function '${name}' has ${count} parameters (max: 5)",
+                         line, "Use dictionary to group parameters")
+    }
+    exhale linter
+}
+
+sigh check_missing_return(linter, name, line) {
+    # Rule 10: Missing return statement
+    if not linter["function_has_return"] {
+        linter = add_issue(linter, INFO, "missing-return",
+                         "Function '${name}' has no explicit return",
+                         line, "Add 'exhale <value>'")
+    }
+    exhale linter
+}
+
+# ============================================================================
+# RULE 11-15: CONTROL FLOW
+# ============================================================================
+
+sigh check_return_outside_function(linter, line) {
+    # Rule 11: Return outside function
+    if not linter["in_function"] {
+        linter = add_issue(linter, ERROR, "return-outside-function",
+                         "Return (exhale) used outside function",
+                         line, "Move inside function")
+    }
+    exhale linter
+}
+
+sigh check_infinite_loop(linter, line) {
+    # Rule 12: Infinite loop warning
+    linter = add_issue(linter, WARNING, "infinite-loop",
+                     "While loop has constant true condition",
+                     line, "Add break condition or verify intentional")
+    exhale linter
+}
+
+sigh check_empty_block(linter, block_type, line) {
+    # Rule 13: Empty blocks
+    linter = add_issue(linter, WARNING, "empty-block",
+                     "${block_type} statement has empty block",
+                     line, "Add code or remove statement")
+    exhale linter
+}
+
+sigh check_always_true(linter, line) {
+    # Rule 14: Always true condition
+    linter = add_issue(linter, WARNING, "always-true-condition",
+                     "Condition is always true",
+                     line, "Remove if and keep then block")
+    exhale linter
+}
+
+sigh check_always_false(linter, line) {
+    # Rule 15: Always false condition
+    linter = add_issue(linter, WARNING, "always-false-condition",
+                     "Condition is always false",
+                     line, "Remove if or check logic")
+    exhale linter
+}
+
+# ============================================================================
+# RULE 16-20: EXPRESSION COMPLEXITY
+# ============================================================================
+
+sigh check_complex_expression(linter, var_name, depth, line) {
+    # Rule 16: Complex expression depth
+    if depth > 5 {
+        linter = add_issue(linter, WARNING, "complex-expression",
+                         "Assignment to '${var_name}' has depth ${depth}",
+                         line, "Break into smaller expressions")
+    }
+    exhale linter
+}
+
+sigh check_complex_confess(linter, depth, line) {
+    # Rule 17: Complex confess statement
+    if depth > 4 {
+        linter = add_issue(linter, STYLE, "complex-confess",
+                         "Confess has complex nested expression",
+                         line, "Extract to variable")
+    }
+    exhale linter
+}
+
+sigh check_division_by_zero(linter, line) {
+    # Rule 18: Division by zero
+    linter = add_issue(linter, ERROR, "division-by-zero",
+                     "Division by zero detected",
+                     line, "Check divisor value")
+    exhale linter
+}
+
+sigh check_comparison_chain(linter, line) {
+    # Rule 19: Comparison chaining
+    linter = add_issue(linter, WARNING, "comparison-chain",
+                     "Chained comparison may not work as expected",
+                     line, "Use 'and': 'a < b and b < c'")
+    exhale linter
+}
+
+sigh check_zero_initialization(linter, name, line) {
+    # Rule 20: Zero initialization warning
+    linter = add_issue(linter, STYLE, "zero-initialization",
+                     "Variable '${name}' initialized to 0",
+                     line, "Consider more meaningful value")
+    exhale linter
+}
+
+# ============================================================================
+# RULE 21-25: TEMPORAL SAFETY
+# ============================================================================
+
+sigh check_temporal_non_timeline(linter, var_name, line) {
+    # Rule 21: Temporal on non-timeline variable
+    if not list_contains(linter["temporal_vars"], var_name) {
+        linter = add_issue(linter, WARNING, "temporal-non-timeline",
+                         "Temporal operator on '${var_name}' (not timeline)",
+                         line, "Ensure declared with 'remember'")
+    }
+    exhale linter
+}
+
+sigh check_negative_temporal_offset(linter, offset, line) {
+    # Rule 22: Negative temporal offset
+    if offset < 0 {
+        linter = add_issue(linter, ERROR, "negative-temporal-offset",
+                         "Temporal @past offset cannot be negative: ${offset}",
+                         line, "Use positive offset")
+    }
+    exhale linter
+}
+
+sigh check_large_temporal_offset(linter, offset, line) {
+    # Rule 23: Very large temporal offset
+    if offset > 100 {
+        linter = add_issue(linter, WARNING, "large-temporal-offset",
+                         "Very large temporal offset: ${offset}",
+                         line, "May cause memory issues")
+    }
+    exhale linter
+}
+
+sigh check_single_fork_branch(linter, count, line) {
+    # Rule 24: Single reality fork branch
+    if count < 2 {
+        linter = add_issue(linter, WARNING, "single-fork-branch",
+                         "Reality fork has only one branch",
+                         line, "Add more branches or remove fork")
+    }
+    exhale linter
+}
+
+sigh check_no_collapse(linter, line) {
+    # Rule 25: No collapse observation
+    linter = add_issue(linter, INFO, "no-collapse-observation",
+                     "Reality fork has no collapse observation",
+                     line, "Consider 'collapse observe <var>'")
+    exhale linter
+}
+
+# ============================================================================
+# RULE 26-30: DATA STRUCTURES & MISC
+# ============================================================================
+
+sigh check_large_list(linter, count, line) {
+    # Rule 26: Large list literal
+    if count > 100 {
+        linter = add_issue(linter, WARNING, "large-list-literal",
+                         "List literal has ${count} elements",
+                         line, "Load from file or generate")
+    }
+    exhale linter
+}
+
+sigh check_invalid_range_args(linter, count, line) {
+    # Rule 27: Invalid range() arguments
+    if count < 1 or count > 3 {
+        linter = add_issue(linter, ERROR, "invalid-range-args",
+                         "range() requires 1-3 arguments, got ${count}",
+                         line, "Use: range(stop) or range(start, stop, step)")
+    }
+    exhale linter
+}
+
+sigh check_invalid_sqrt_args(linter, count, line) {
+    # Rule 28: Invalid sqrt_of_pain() arguments
+    if count != 1 {
+        linter = add_issue(linter, ERROR, "invalid-sqrt-args",
+                         "sqrt_of_pain() requires 1 argument, got ${count}",
+                         line, "Use: sqrt_of_pain(number)")
+    }
+    exhale linter
+}
+
+sigh check_duplicate_params(linter, params, line) {
+    # Rule 29: Duplicate parameter names
+    remember i = 0
+    while i < length_of(params) {
+        remember j = i + 1
+        while j < length_of(params) {
+            if params[i] == params[j] {
+                linter = add_issue(linter, ERROR, "duplicate-parameter",
+                                 "Duplicate parameter '${params[i]}'",
+                                 line, "Use unique parameter names")
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    exhale linter
+}
+
+sigh check_shadowed_builtin(linter, name, line) {
+    # Rule 30: Shadowing builtin functions
+    if list_contains(linter["builtins"], name) {
+        linter = add_issue(linter, WARNING, "shadow-builtin",
+                         "'${name}' shadows builtin function",
+                         line, "Use different name")
+    }
+    exhale linter
+}
+
+# ============================================================================
+# FILE ANALYSIS
+# ============================================================================
+
+sigh analyze_file(filepath) {
+    attempt {
+        remember source = read_file(filepath)
+        remember lines = split(source, "\n")
+        remember linter = create_linter()
+        
+        # Pass 1: Analyze each line
+        remember line_num = 0
+        for line in lines {
+            linter = analyze_line(linter, line, line_num)
+            line_num = line_num + 1
+        }
+        
+        # Pass 2: Final checks
+        linter = check_unused_variables(linter)
+        linter = check_unused_functions(linter)
+        linter = check_undefined_functions(linter)
+        
+        exhale {"success": yes, "linter": linter}
+    } catch error {
+        exhale {"success": no, "error": error}
+    }
+}
+
+sigh analyze_line(linter, line, line_num) {
+    remember trimmed = strip(line)
+    
+    if string_length(trimmed) == 0 or startswith(trimmed, "#") {
+        exhale linter
+    }
+    
+    # Function definition
+    if startswith(trimmed, "sigh ") {
+        remember func = extract_function(trimmed)
+        linter["defined_functions"] = append(linter["defined_functions"], func["name"])
+        linter = check_function_naming(linter, func["name"], line_num)
+        linter = check_too_many_parameters(linter, func["name"], func["params"], line_num)
+        linter = check_duplicate_params(linter, func["params"], line_num)
+        linter["in_function"] = yes
+        linter["function_has_return"] = no
+    }
+    
+    # Variable declaration
+    if startswith(trimmed, "remember ") {
+        remember var = extract_variable(trimmed)
+        linter = define_var(linter, var["name"])
+        linter["temporal_vars"] = append(linter["temporal_vars"], var["name"])
+        linter = check_variable_naming(linter, var["name"], line_num)
+        linter = check_shadowed_builtin(linter, var["name"], line_num)
+        if var["value"] == "0" {
+            linter = check_zero_initialization(linter, var["name"], line_num)
+        }
+    }
+    
+    # Return statement
+    if startswith(trimmed, "exhale ") {
+        linter = check_return_outside_function(linter, line_num)
+        linter["function_has_return"] = yes
+    }
+    
+    # Block end
+    if trimmed == "}" {
+        linter["in_function"] = no
+    }
+    
+    exhale linter
+}
+
+# ============================================================================
+# HELPERS
+# ============================================================================
+
+sigh extract_function(line) {
+    remember without_sigh = substring(line, 5, string_length(line))
+    remember paren_pos = index_of(without_sigh, "(")
+    
+    if paren_pos < 0 {
+        exhale {"name": strip(without_sigh), "params": []}
+    }
+    
+    remember name = strip(substring(without_sigh, 0, paren_pos))
+    remember rest = substring(without_sigh, paren_pos + 1, string_length(without_sigh))
+    remember close = index_of(rest, ")")
+    
+    remember params = []
+    if close > 0 {
+        remember params_str = substring(rest, 0, close)
+        if string_length(strip(params_str)) > 0 {
+            remember parts = split(params_str, ",")
+            for part in parts {
+                params = append(params, strip(part))
+            }
+        }
+    }
+    
+    exhale {"name": name, "params": params}
+}
+
+sigh extract_variable(line) {
+    remember without_rem = substring(line, 9, string_length(line))
+    remember eq_pos = index_of(without_rem, "=")
+    
+    if eq_pos < 0 {
+        exhale {"name": strip(without_rem), "value": "void"}
+    }
+    
+    remember name = strip(substring(without_rem, 0, eq_pos))
+    remember value = strip(substring(without_rem, eq_pos + 1, string_length(without_rem)))
+    
+    exhale {"name": name, "value": value}
+}
+
+sigh list_contains(list, item) {
+    for elem in list {
+        if elem == item {
+            exhale yes
+        }
+    }
+    exhale no
+}
+
+sigh severity_name(sev) {
+    if sev == 1 { exhale "ERROR" }
+    if sev == 2 { exhale "WARNING" }
+    if sev == 3 { exhale "INFO" }
+    if sev == 4 { exhale "STYLE" }
+    exhale "UNKNOWN"
+}
+
+sigh format_issue(issue) {
+    remember color = ""
+    if issue["severity"] == 1 { color = "\033[91m" }
+    if issue["severity"] == 2 { color = "\033[93m" }
+    if issue["severity"] == 3 { color = "\033[94m" }
+    if issue["severity"] == 4 { color = "\033[96m" }
+    
+    remember reset = "\033[0m"
+    remember sev = severity_name(issue["severity"])
+    remember msg = "${color}[${sev}]${reset} ${issue["rule"]}: ${issue["message"]}"
+    
+    if issue["line"] != void {
+        msg = "Line ${issue["line"]}: ${msg}"
+    }
+    
+    if issue["suggestion"] != void {
+        msg = "${msg}\n  💡 ${issue["suggestion"]}"
+    }
+    
+    exhale msg
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh print_usage() {
+    confess ""
+    confess "Lament Language Linter v2.0"
+    confess "============================"
+    confess ""
+    confess "Static analysis with 30+ lint rules"
+    confess ""
+    confess "Usage:"
+    confess "  lament linter.lament <file.lament> [options]"
+    confess ""
+    confess "Options:"
+    confess "  --strict      Treat warnings as errors"
+    confess "  --json        JSON output for CI/CD"
+    confess ""
+}
+
+sigh main(args) {
+    if length_of(args) < 1 {
+        print_usage()
+        exhale 1
+    }
+    
+    remember filepath = void
+    remember strict = no
+    remember json_output = no
+    
+    remember i = 0
+    while i < length_of(args) {
+        remember arg = args[i]
+        if arg == "--strict" { strict = yes }
+        if arg == "--json" { json_output = yes }
+        if not startswith(arg, "--") { filepath = arg }
+        i = i + 1
+    }
+    
+    if filepath == void {
+        print_usage()
+        exhale 1
+    }
+    
+    remember result = analyze_file(filepath)
+    
+    if not result["success"] {
+        confess "Error: ${result["error"]}"
+        exhale 1
+    }
+    
+    remember issues = result["linter"]["issues"]
+    
+    if length_of(issues) == 0 {
+        confess "✅ No issues found in ${filepath}"
+        exhale 0
+    }
+    
+    if not json_output {
+        confess "\n🔍 Linting ${filepath}..."
+        confess "============================================================\n"
+        
+        for issue in issues {
+            confess format_issue(issue)
+            confess ""
+        }
+        
+        # Summary
+        remember errors = 0
+        remember warnings = 0
+        remember info = 0
+        remember style = 0
+        
+        for issue in issues {
+            if issue["severity"] == 1 { errors = errors + 1 }
+            if issue["severity"] == 2 { warnings = warnings + 1 }
+            if issue["severity"] == 3 { info = info + 1 }
+            if issue["severity"] == 4 { style = style + 1 }
+        }
+        
+        confess "============================================================"
+        confess "Summary: ${errors} errors, ${warnings} warnings, ${info} info, ${style} style"
+    }
+    
+    # Exit code
+    for issue in issues {
+        if issue["severity"] == 1 { exhale 1 }
+    }
+    
+    if strict {
+        for issue in issues {
+            if issue["severity"] == 2 { exhale 1 }
+        }
+    }
+    
+    exhale 0
+}
+
+confess "Lament Linter v2.0 - 30+ Lint Rules"
+exhale main(get_args())

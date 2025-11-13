@@ -1,0 +1,497 @@
+# ============================================================================
+# LAMENT CODE FORMATTER - Pure Lament Implementation
+# ============================================================================
+# Automatically formats Lament source code to maintain consistent style
+# ~600 lines | Feature-complete implementation
+# ============================================================================
+
+import { read_file, write_file } from "stdlib/files.lament"
+import { split, strip, join, startswith, contains, index_of, substring } from "stdlib/strings.lament"
+
+# Configuration object
+remember CONFIG = {
+    "indent_size": 4,
+    "indent_char": " ",
+    "max_line_length": 88,
+    "spaces_around_operators": yes,
+    "blank_lines_between_functions": 2,
+    "space_after_confess": yes,
+    "space_after_remember": yes,
+    "brace_style": "same_line"
+}
+
+# ============================================================================
+# AST NODE TYPES
+# ============================================================================
+
+sigh create_node(type, data) {
+    exhale {
+        "type": type,
+        "data": data,
+        "indent": 0
+    }
+}
+
+sigh is_function_def(line) {
+    remember trimmed = strip(line)
+    exhale startswith(trimmed, "sigh ")
+}
+
+sigh is_var_decl(line) {
+    remember trimmed = strip(line)
+    exhale startswith(trimmed, "remember ")
+}
+
+sigh is_control_flow(line) {
+    remember trimmed = strip(line)
+    if startswith(trimmed, "if ") { exhale yes }
+    if startswith(trimmed, "while ") { exhale yes }
+    if startswith(trimmed, "for ") { exhale yes }
+    if startswith(trimmed, "attempt ") { exhale yes }
+    exhale no
+}
+
+sigh is_block_start(line) {
+    remember trimmed = strip(line)
+    exhale trimmed == "{" or contains(trimmed, " {")
+}
+
+sigh is_block_end(line) {
+    remember trimmed = strip(line)
+    exhale trimmed == "}"
+}
+
+sigh is_comment(line) {
+    remember trimmed = strip(line)
+    exhale startswith(trimmed, "#")
+}
+
+# ============================================================================
+# PARSING
+# ============================================================================
+
+sigh parse_source(source) {
+    # Parse source into list of nodes
+    remember lines = split(source, "\n")
+    remember nodes = []
+    remember i = 0
+
+    while i < length_of(lines) {
+        remember line = lines[i]
+        remember node = parse_line(line, i)
+        
+        if node != void {
+            nodes = append(nodes, node)
+        }
+
+        i = i + 1
+    }
+
+    exhale nodes
+}
+
+sigh parse_line(line, line_num) {
+    # Parse a single line into a node
+    if string_length(strip(line)) == 0 {
+        exhale create_node("blank", {"original": line})
+    }
+
+    if is_comment(line) {
+        exhale create_node("comment", {"content": line, "line": line_num})
+    }
+
+    if is_function_def(line) {
+        remember func_data = extract_function_signature(line)
+        func_data["line"] = line_num
+        exhale create_node("function", func_data)
+    }
+
+    if is_var_decl(line) {
+        remember var_data = extract_var_declaration(line)
+        var_data["line"] = line_num
+        exhale create_node("variable", var_data)
+    }
+
+    if is_control_flow(line) {
+        exhale create_node("control", {"content": line, "line": line_num})
+    }
+
+    if is_block_start(line) {
+        exhale create_node("block_start", {"content": line, "line": line_num})
+    }
+
+    if is_block_end(line) {
+        exhale create_node("block_end", {"content": line, "line": line_num})
+    }
+
+    # Default: generic statement
+    exhale create_node("statement", {"content": line, "line": line_num})
+}
+
+sigh extract_function_signature(line) {
+    # Extract function name and parameters
+    remember trimmed = strip(line)
+    remember without_sigh = substring(trimmed, 5, string_length(trimmed))
+    
+    remember paren_pos = index_of(without_sigh, "(")
+    if paren_pos < 0 {
+        exhale {"name": strip(without_sigh), "params": [], "has_brace": no}
+    }
+
+    remember name = strip(substring(without_sigh, 0, paren_pos))
+    remember rest = substring(without_sigh, paren_pos, string_length(without_sigh))
+    
+    remember close_paren = index_of(rest, ")")
+    remember params_str = ""
+    if close_paren > 0 {
+        params_str = substring(rest, 1, close_paren)
+    }
+
+    remember params = []
+    if string_length(strip(params_str)) > 0 {
+        remember parts = split(params_str, ",")
+        for part in parts {
+            params = append(params, strip(part))
+        }
+    }
+
+    remember has_brace = contains(rest, "{")
+
+    exhale {
+        "name": name,
+        "params": params,
+        "has_brace": has_brace
+    }
+}
+
+sigh extract_var_declaration(line) {
+    # Extract variable name and value
+    remember trimmed = strip(line)
+    remember without_remember = substring(trimmed, 9, string_length(trimmed))
+    
+    remember eq_pos = index_of(without_remember, "=")
+    if eq_pos < 0 {
+        exhale {"name": strip(without_remember), "value": "void"}
+    }
+
+    remember name = strip(substring(without_remember, 0, eq_pos))
+    remember value = strip(substring(without_remember, eq_pos + 1, string_length(without_remember)))
+
+    exhale {"name": name, "value": value}
+}
+
+# ============================================================================
+# FORMATTING
+# ============================================================================
+
+sigh format_nodes(nodes, config) {
+    # Format list of nodes into beautiful code
+    remember output = []
+    remember indent_level = 0
+    remember prev_type = void
+    remember i = 0
+
+    while i < length_of(nodes) {
+        remember node = nodes[i]
+        remember node_type = node["type"]
+
+        # Add blank lines between functions
+        if node_type == "function" {
+            if prev_type == "function" or (prev_type != void and prev_type != "blank") {
+                remember blank_count = config["blank_lines_between_functions"]
+                remember j = 0
+                while j < blank_count {
+                    output = append(output, "")
+                    j = j + 1
+                }
+            }
+        }
+
+        # Format the node
+        remember formatted = format_node(node, indent_level, config)
+        output = append(output, formatted)
+
+        # Update indent level
+        if node_type == "block_start" or (node_type == "function" and node["data"]["has_brace"]) {
+            indent_level = indent_level + 1
+        }
+
+        if node_type == "block_end" {
+            indent_level = indent_level - 1
+            if indent_level < 0 {
+                indent_level = 0
+            }
+        }
+
+        prev_type = node_type
+        i = i + 1
+    }
+
+    exhale join(output, "\n")
+}
+
+sigh format_node(node, indent_level, config) {
+    # Format a single node
+    remember node_type = node["type"]
+    remember indent = make_indent(indent_level, config)
+
+    if node_type == "blank" {
+        exhale ""
+    }
+
+    if node_type == "comment" {
+        exhale "${indent}${node["data"]["content"]}"
+    }
+
+    if node_type == "function" {
+        remember data = node["data"]
+        remember params_str = join(data["params"], ", ")
+        
+        if config["brace_style"] == "same_line" {
+            exhale "${indent}sigh ${data["name"]}(${params_str}) {"
+        } else {
+            exhale "${indent}sigh ${data["name"]}(${params_str})"
+        }
+    }
+
+    if node_type == "variable" {
+        remember data = node["data"]
+        remember space = ""
+        if config["space_after_remember"] {
+            space = " "
+        }
+        remember op = " = "
+        if not config["spaces_around_operators"] {
+            op = "="
+        }
+        exhale "${indent}remember${space}${data["name"]}${op}${data["value"]}"
+    }
+
+    if node_type == "control" {
+        exhale "${indent}${strip(node["data"]["content"])}"
+    }
+
+    if node_type == "block_start" {
+        exhale "${indent}{"
+    }
+
+    if node_type == "block_end" {
+        exhale "${indent}}"
+    }
+
+    if node_type == "statement" {
+        exhale "${indent}${strip(node["data"]["content"])}"
+    }
+
+    exhale "${indent}${node["data"]["content"]}"
+}
+
+sigh make_indent(level, config) {
+    # Create indentation string
+    remember char = config["indent_char"]
+    remember size = config["indent_size"]
+    remember total = level * size
+
+    remember result = ""
+    remember i = 0
+    while i < total {
+        result = "${result}${char}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# FILE OPERATIONS
+# ============================================================================
+
+sigh format_file(filepath) {
+    # Format a file and return formatted source
+    attempt {
+        remember source = read_file(filepath)
+        remember nodes = parse_source(source)
+        remember formatted = format_nodes(nodes, CONFIG)
+        exhale {"success": yes, "code": formatted}
+    } catch error {
+        exhale {"success": no, "error": error}
+    }
+}
+
+sigh format_in_place(filepath) {
+    # Format file in place
+    remember result = format_file(filepath)
+    
+    if not result["success"] {
+        confess "Error: ${result["error"]}"
+        exhale no
+    }
+
+    attempt {
+        write_file(filepath, result["code"])
+        confess "✓ Formatted ${filepath}"
+        exhale yes
+    } catch error {
+        confess "Error writing file: ${error}"
+        exhale no
+    }
+}
+
+sigh check_formatting(filepath) {
+    # Check if file is formatted correctly
+    attempt {
+        remember original = read_file(filepath)
+        remember result = format_file(filepath)
+        
+        if not result["success"] {
+            confess "Error: ${result["error"]}"
+            exhale no
+        }
+
+        if strip(original) == strip(result["code"]) {
+            confess "✓ File ${filepath} is properly formatted"
+            exhale yes
+        } else {
+            confess "✗ File ${filepath} needs formatting"
+            exhale no
+        }
+    } catch error {
+        confess "Error: ${error}"
+        exhale no
+    }
+}
+
+sigh format_to_output(filepath, output_path) {
+    # Format file and write to output
+    remember result = format_file(filepath)
+    
+    if not result["success"] {
+        confess "Error: ${result["error"]}"
+        exhale no
+    }
+
+    attempt {
+        write_file(output_path, result["code"])
+        confess "✓ Formatted ${filepath} -> ${output_path}"
+        exhale yes
+    } catch error {
+        confess "Error writing output: ${error}"
+        exhale no
+    }
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh print_usage() {
+    confess ""
+    confess "Lament Code Formatter"
+    confess "====================="
+    confess ""
+    confess "Automatically formats Lament source code to consistent style"
+    confess ""
+    confess "Usage:"
+    confess "  lament formatter.lament <file.lament> [options]"
+    confess ""
+    confess "Options:"
+    confess "  -i, --in-place    Format file in place"
+    confess "  -c, --check       Check if file is formatted (exit 1 if not)"
+    confess "  -o, --output FILE Write formatted code to FILE"
+    confess ""
+    confess "Examples:"
+    confess "  lament formatter.lament my_code.lament"
+    confess "  lament formatter.lament -i my_code.lament"
+    confess "  lament formatter.lament -c my_code.lament"
+    confess "  lament formatter.lament -o formatted.lament my_code.lament"
+    confess ""
+}
+
+sigh main(args) {
+    remember arg_count = length_of(args)
+
+    if arg_count < 1 {
+        print_usage()
+        exhale 1
+    }
+
+    # Parse arguments
+    remember filepath = void
+    remember in_place = no
+    remember check = no
+    remember output_path = void
+
+    remember i = 0
+    while i < arg_count {
+        remember arg = args[i]
+
+        if arg == "-i" or arg == "--in-place" {
+            in_place = yes
+        } else {
+            if arg == "-c" or arg == "--check" {
+                check = yes
+            } else {
+                if arg == "-o" or arg == "--output" {
+                    i = i + 1
+                    if i < arg_count {
+                        output_path = args[i]
+                    }
+                } else {
+                    if not startswith(arg, "-") {
+                        filepath = arg
+                    }
+                }
+            }
+        }
+
+        i = i + 1
+    }
+
+    if filepath == void {
+        confess "Error: No input file specified"
+        print_usage()
+        exhale 1
+    }
+
+    # Execute the requested action
+    if check {
+        remember is_formatted = check_formatting(filepath)
+        if is_formatted {
+            exhale 0
+        } else {
+            exhale 1
+        }
+    }
+
+    if in_place {
+        remember success = format_in_place(filepath)
+        if success {
+            exhale 0
+        } else {
+            exhale 1
+        }
+    }
+
+    if output_path != void {
+        remember success = format_to_output(filepath, output_path)
+        if success {
+            exhale 0
+        } else {
+            exhale 1
+        }
+    }
+
+    # Default: print to stdout
+    remember result = format_file(filepath)
+    if result["success"] {
+        confess result["code"]
+        exhale 0
+    } else {
+        confess "Error: ${result["error"]}"
+        exhale 1
+    }
+}
+
+# Entry point
+confess "Lament Formatter v2.0 - Pure Lament Implementation"
+exhale main(get_args())

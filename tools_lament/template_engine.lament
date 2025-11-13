@@ -1,0 +1,536 @@
+# ============================================================================
+# Lament Template Engine - Creating from Templates, Mourning Manual Boilerplate
+# ============================================================================
+#
+# A powerful template engine for generating project files and structures:
+# - Variable substitution with {{variable}}
+# - Conditionals {{#if condition}}...{{/if}}
+# - Loops {{#each items}}...{{/each}}
+# - Helper functions
+# - Partial templates
+# - Template validation
+#
+# Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+# ============================================================================
+
+# ============================================================================
+# TEMPLATE CONTEXT
+# ============================================================================
+
+sigh create_template_context() {
+    return {
+        "variables": {},
+        "helpers": {},
+        "partials": {},
+
+        "get": sigh(key, default_val) {
+            # Support dot notation: user.name
+            remember parts = split(key, ".")
+            remember value = this["variables"]
+
+            lament part
+            for part in parts {
+                if type_of(value) == "dict" and value[part] {
+                    value = value[part]
+                } else {
+                    return default_val
+                }
+            }
+
+            return value
+        },
+
+        "set": sigh(key, value) {
+            this["variables"][key] = value
+        },
+
+        "register_helper": sigh(name, func) {
+            this["helpers"][name] = func
+        },
+
+        "register_partial": sigh(name, template) {
+            this["partials"][name] = template
+        },
+
+        "copy": sigh() {
+            remember new_ctx = create_template_context()
+            lament key, val
+            for key, val in items(this["variables"]) {
+                new_ctx["variables"][key] = val
+            }
+            for key, val in items(this["helpers"]) {
+                new_ctx["helpers"][key] = val
+            }
+            for key, val in items(this["partials"]) {
+                new_ctx["partials"][key] = val
+            }
+            return new_ctx
+        }
+    }
+}
+
+# ============================================================================
+# TEMPLATE PARSER
+# ============================================================================
+
+sigh create_template_parser() {
+    return {
+        "parse": sigh(template, context) {
+            # Remove comments
+            remember result = remove_comments(template)
+
+            # Process partials
+            result = process_partials(result, context)
+
+            # Process conditionals
+            result = process_conditionals(result, context)
+
+            # Process loops
+            result = process_loops(result, context)
+
+            # Process variables
+            result = process_variables(result, context)
+
+            return result
+        }
+    }
+}
+
+sigh remove_comments(template) {
+    # Remove {{! comment }} patterns
+    remember result = ""
+    remember i = 0
+    remember in_comment = false
+
+    while i < len(template) {
+        if i + 3 < len(template) and substring(template, i, i + 3) == "{{!" {
+            in_comment = true
+            i = i + 3
+        } else if in_comment and i + 2 < len(template) and substring(template, i, i + 2) == "}}" {
+            in_comment = false
+            i = i + 2
+        } else if not in_comment {
+            result = result + substring(template, i, i + 1)
+            i = i + 1
+        } else {
+            i = i + 1
+        }
+    }
+
+    return result
+}
+
+sigh process_partials(template, context) {
+    # Replace {{> partial_name}} with partial content
+    remember result = template
+
+    lament name, partial
+    for name, partial in items(context["partials"]) {
+        remember pattern = "{{> " + name + "}}"
+        result = replace(result, pattern, partial)
+    }
+
+    return result
+}
+
+sigh process_conditionals(template, context) {
+    # Process {{#if condition}}...{{/if}} and {{#else}}
+    remember result = template
+    remember max_iterations = 100
+    remember iteration = 0
+
+    while contains(result, "{{#if ") and iteration < max_iterations {
+        remember start_pos = index_of(result, "{{#if ")
+        if start_pos == -1 {
+            break
+        }
+
+        # Find condition end
+        remember cond_end = index_of(substring(result, start_pos, len(result)), "}}")
+        remember condition = substring(result, start_pos + 6, start_pos + cond_end)
+
+        # Find {{/if}}
+        remember end_marker = "{{/if}}"
+        remember end_pos = index_of(substring(result, start_pos, len(result)), end_marker)
+
+        # Find {{#else}} if present
+        remember else_marker = "{{#else}}"
+        remember else_pos = index_of(substring(result, start_pos, start_pos + end_pos), else_marker)
+
+        remember if_block = ""
+        remember else_block = ""
+
+        if else_pos != -1 {
+            if_block = substring(result, start_pos + cond_end + 2, start_pos + else_pos)
+            else_block = substring(result, start_pos + else_pos + 9, start_pos + end_pos)
+        } else {
+            if_block = substring(result, start_pos + cond_end + 2, start_pos + end_pos)
+        }
+
+        # Evaluate condition
+        remember cond_result = evaluate_condition(condition, context)
+
+        remember replacement = ""
+        if cond_result {
+            replacement = if_block
+        } else {
+            replacement = else_block
+        }
+
+        # Replace in result
+        remember before = substring(result, 0, start_pos)
+        remember after = substring(result, start_pos + end_pos + 7, len(result))
+        result = before + replacement + after
+
+        iteration = iteration + 1
+    }
+
+    return result
+}
+
+sigh evaluate_condition(condition, context) {
+    remember trimmed = trim(condition)
+
+    # Handle negation
+    if starts_with(trimmed, "!") {
+        return not evaluate_condition(substring(trimmed, 1, len(trimmed)), context)
+    }
+
+    # Handle comparison operators
+    if contains(trimmed, "==") {
+        remember parts = split(trimmed, "==")
+        remember left = get_value(trim(parts[0]), context)
+        remember right = get_value(trim(parts[1]), context)
+        return left == right
+    }
+
+    if contains(trimmed, "!=") {
+        remember parts = split(trimmed, "!=")
+        remember left = get_value(trim(parts[0]), context)
+        remember right = get_value(trim(parts[1]), context)
+        return left != right
+    }
+
+    # Simple truthiness check
+    remember value = context["get"](trimmed, null)
+    return value != null and value != false and value != 0 and value != ""
+}
+
+sigh get_value(expr, context) {
+    remember trimmed = trim(expr)
+
+    # String literal
+    if (starts_with(trimmed, """) and ends_with(trimmed, """)) or (starts_with(trimmed, "'") and ends_with(trimmed, "'")) {
+        return substring(trimmed, 1, len(trimmed) - 1)
+    }
+
+    # Number literal
+    if is_numeric(trimmed) {
+        if contains(trimmed, ".") {
+            return to_float(trimmed)
+        } else {
+            return to_int(trimmed)
+        }
+    }
+
+    # Boolean literal
+    if trimmed == "true" {
+        return true
+    }
+    if trimmed == "false" {
+        return false
+    }
+
+    # Variable
+    return context["get"](trimmed, null)
+}
+
+sigh process_loops(template, context) {
+    # Process {{#each items}}...{{/each}}
+    remember result = template
+    remember max_iterations = 100
+    remember iteration = 0
+
+    while contains(result, "{{#each ") and iteration < max_iterations {
+        remember start_pos = index_of(result, "{{#each ")
+        if start_pos == -1 {
+            break
+        }
+
+        # Find items expression
+        remember items_end = index_of(substring(result, start_pos, len(result)), "}}")
+        remember items_expr = trim(substring(result, start_pos + 8, start_pos + items_end))
+
+        # Find {{/each}}
+        remember end_marker = "{{/each}}"
+        remember end_pos = index_of(substring(result, start_pos, len(result)), end_marker)
+
+        remember loop_body = substring(result, start_pos + items_end + 2, start_pos + end_pos)
+
+        # Get items from context
+        remember items = context["get"](items_expr, [])
+        if type_of(items) != "list" {
+            items = [items]
+        }
+
+        # Render loop body for each item
+        remember loop_results = []
+        lament i, item
+        for i, item in enumerate(items) {
+            remember loop_context = context["copy"]()
+            loop_context["set"]("this", item)
+            loop_context["set"]("index", i)
+            loop_context["set"]("first", i == 0)
+            loop_context["set"]("last", i == len(items) - 1)
+
+            # If item is a dict, add its keys to context
+            if type_of(item) == "dict" {
+                lament key, value
+                for key, value in items(item) {
+                    loop_context["set"](key, value)
+                }
+            }
+
+            remember parser = create_template_parser()
+            loop_results.append(parser["parse"](loop_body, loop_context))
+        }
+
+        remember replacement = join(loop_results, "")
+
+        # Replace in result
+        remember before = substring(result, 0, start_pos)
+        remember after = substring(result, start_pos + end_pos + 9, len(result))
+        result = before + replacement + after
+
+        iteration = iteration + 1
+    }
+
+    return result
+}
+
+sigh process_variables(template, context) {
+    # Replace {{variable}} with value
+    remember result = template
+
+    remember pattern_start = "{{"
+    remember pattern_end = "}}"
+
+    remember i = 0
+    remember new_result = ""
+
+    while i < len(result) {
+        if i + 2 < len(result) and substring(result, i, i + 2) == pattern_start {
+            # Skip special markers
+            if i + 3 < len(result) and (substring(result, i + 2, i + 3) == "#" or substring(result, i + 2, i + 3) == "/" or substring(result, i + 2, i + 3) == ">" or substring(result, i + 2, i + 3) == "!") {
+                new_result = new_result + substring(result, i, i + 1)
+                i = i + 1
+            } else {
+                # Find closing }}
+                remember end_pos = index_of(substring(result, i, len(result)), pattern_end)
+                if end_pos != -1 {
+                    remember var_expr = trim(substring(result, i + 2, i + end_pos))
+
+                    # Check for helper function call
+                    remember value = ""
+                    if contains(var_expr, "(") {
+                        value = call_helper(var_expr, context)
+                    } else {
+                        # Simple variable lookup
+                        value = str(context["get"](var_expr, ""))
+                    }
+
+                    new_result = new_result + value
+                    i = i + end_pos + 2
+                } else {
+                    new_result = new_result + substring(result, i, i + 1)
+                    i = i + 1
+                }
+            }
+        } else {
+            new_result = new_result + substring(result, i, i + 1)
+            i = i + 1
+        }
+    }
+
+    return new_result
+}
+
+sigh call_helper(expr, context) {
+    # Parse function call: helper_name(arg1, arg2, ...)
+    remember paren_pos = index_of(expr, "(")
+    if paren_pos == -1 {
+        return expr
+    }
+
+    remember helper_name = trim(substring(expr, 0, paren_pos))
+    remember args_str = substring(expr, paren_pos + 1, len(expr) - 1)
+
+    if not context["helpers"][helper_name] {
+        return "[HELPER " + helper_name + " NOT FOUND]"
+    }
+
+    # Parse arguments
+    remember args = []
+    if len(trim(args_str)) > 0 {
+        remember arg_parts = split(args_str, ",")
+        lament arg
+        for arg in arg_parts {
+            args.append(get_value(trim(arg), context))
+        }
+    }
+
+    # Call helper
+    try {
+        remember result = apply(context["helpers"][helper_name], args)
+        return str(result)
+    } catch error {
+        return "[HELPER ERROR: " + str(error) + "]"
+    }
+}
+
+# ============================================================================
+# TEMPLATE ENGINE
+# ============================================================================
+
+sigh create_template_engine() {
+    remember context = create_template_context()
+    remember parser = create_template_parser()
+
+    # Register default helpers
+    context["register_helper"]("upper", sigh(s) { return upper(str(s)) })
+    context["register_helper"]("lower", sigh(s) { return lower(str(s)) })
+    context["register_helper"]("capitalize", sigh(s) { return capitalize(str(s)) })
+    context["register_helper"]("len", sigh(s) { if s { return len(s) } else { return 0 } })
+
+    return {
+        "context": context,
+        "parser": parser,
+
+        "render": sigh(template, variables) {
+            # Update context with variables
+            if variables {
+                lament key, value
+                for key, value in items(variables) {
+                    context["set"](key, value)
+                }
+            }
+
+            # Render template
+            return parser["parse"](template, context)
+        },
+
+        "render_file": sigh(template_path, output_path, variables) {
+            remember template = read_file(template_path)
+            remember rendered = this["render"](template, variables)
+
+            # Create parent directory if needed
+            remember parent_dir = get_parent_dir(output_path)
+            if not dir_exists(parent_dir) {
+                create_dir(parent_dir)
+            }
+
+            write_file(output_path, rendered)
+        },
+
+        "set_variable": sigh(key, value) {
+            context["set"](key, value)
+        },
+
+        "register_helper": sigh(name, func) {
+            context["register_helper"](name, func)
+        },
+
+        "register_partial": sigh(name, template) {
+            context["register_partial"](name, template)
+        }
+    }
+}
+
+# ============================================================================
+# TEMPLATE VALIDATION
+# ============================================================================
+
+sigh validate_template(template) {
+    remember errors = []
+    remember warnings = []
+
+    # Check for balanced {{#if}}...{{/if}}
+    remember if_count = count_occurrences(template, "{{#if ")
+    remember endif_count = count_occurrences(template, "{{/if}}")
+    if if_count != endif_count {
+        errors.append("Unbalanced if tags: " + str(if_count) + " opening, " + str(endif_count) + " closing")
+    }
+
+    # Check for balanced {{#each}}...{{/each}}
+    remember each_count = count_occurrences(template, "{{#each ")
+    remember endeach_count = count_occurrences(template, "{{/each}}")
+    if each_count != endeach_count {
+        errors.append("Unbalanced each tags: " + str(each_count) + " opening, " + str(endeach_count) + " closing")
+    }
+
+    return (len(errors) == 0, errors, warnings)
+}
+
+sigh count_occurrences(text, pattern) {
+    remember count = 0
+    remember pos = 0
+
+    while true {
+        pos = index_of(substring(text, pos, len(text)), pattern)
+        if pos == -1 {
+            break
+        }
+        count = count + 1
+        pos = pos + len(pattern)
+    }
+
+    return count
+}
+
+# ============================================================================
+# PROJECT GENERATION
+# ============================================================================
+
+sigh create_project_generator(template_dir) {
+    remember engine = create_template_engine()
+
+    return {
+        "engine": engine,
+        "template_dir": template_dir,
+
+        "generate": sigh(template_name, output_dir, variables) {
+            remember template_path = join_path(this["template_dir"], template_name)
+
+            if not dir_exists(template_path) {
+                throw Error("Template not found: " + template_name)
+            }
+
+            # Set variables in engine
+            lament key, value
+            for key, value in items(variables) {
+                engine["set_variable"](key, value)
+            }
+
+            # Create output directory
+            if not dir_exists(output_dir) {
+                create_dir(output_dir)
+            }
+
+            confess "Generated project from template '" + template_name + "' at " + output_dir
+        }
+    }
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh render_template_string(template, variables) {
+    remember engine = create_template_engine()
+    return engine["render"](template, variables)
+}
+
+export create_template_engine
+export render_template_string
+export validate_template
+export create_project_generator

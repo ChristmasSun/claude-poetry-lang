@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Lament Binary Builder CLI wrapper."""
+"""Lament binary builder CLI - Bootstrap wrapper."""
 import sys
-from pathlib import Path
-
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from tools.binary_builder import main
+import os
+sys.path.insert(0, os.path.dirname(__file__))
+from bootstrap_tool import run_lament_tool
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(run_lament_tool('binary_builder.lament', sys.argv[1:]))

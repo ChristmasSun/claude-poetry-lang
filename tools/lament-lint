@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Lament linter CLI."""
+"""Lament linter CLI - Bootstrap wrapper."""
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from tools.linter import main
+sys.path.insert(0, os.path.dirname(__file__))
+from bootstrap_tool import run_lament_tool
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(run_lament_tool('linter.lament', sys.argv[1:]))

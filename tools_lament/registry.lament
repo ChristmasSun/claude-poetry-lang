@@ -1,0 +1,1123 @@
+# ============================================================================
+# LAMENT PACKAGE REGISTRY - The Vault of Souls
+# ============================================================================
+# A package registry system for discovering, publishing, and managing Lament packages.
+# Supports local and remote registries with authentication and version management.
+#
+# Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+# Ported from Python to Pure Lament  
+# ============================================================================
+
+breathe "stdlib/collections"
+breathe "stdlib/files"
+breathe "stdlib/strings"
+breathe "stdlib/network"
+breathe "stdlib/crypto"
+breathe "stdlib/datetime"
+
+# ============================================================================
+# REGISTRY CONFIGURATION
+# ============================================================================
+
+sigh RegistryConfig_new(name, url, api_key, priority, enabled) {
+    # Create a registry configuration object
+    if api_key == void { api_key = "" }
+    if priority == void { priority = 0 }
+    if enabled == void { enabled = yes }
+
+    exhale {
+        "name": name,
+        "url": url,
+        "api_key": api_key,
+        "priority": priority,
+        "enabled": enabled
+    }
+}
+
+sigh RegistryConfig_from_dict(data) {
+    # Create from dictionary
+    remember name = data["name"]
+    remember url = data["url"]
+    remember api_key = if dict_has_key(data, "api_key") { data["api_key"] } else { "" }
+    remember priority = if dict_has_key(data, "priority") { data["priority"] } else { 0 }
+    remember enabled = if dict_has_key(data, "enabled") { data["enabled"] } else { yes }
+
+    exhale RegistryConfig_new(name, url, api_key, priority, enabled)
+}
+
+sigh RegistryConfig_to_dict(config) {
+    # Convert to dictionary
+    exhale {
+        "name": config["name"],
+        "url": config["url"],
+        "api_key": config["api_key"],
+        "priority": config["priority"],
+        "enabled": config["enabled"]
+    }
+}
+
+# ============================================================================
+# REGISTRY CONFIG MANAGER
+# ============================================================================
+
+sigh RegistryConfigManager_new(config_dir) {
+    # Create a registry config manager
+    if config_dir == void {
+        config_dir = path_join(home_directory(), ".lament")
+    }
+
+    remember config_file = path_join(config_dir, "registries.json")
+
+    if not dir_exists(config_dir) {
+        create_directory(config_dir)
+    }
+
+    # Default registries
+    remember default_registries = [
+        RegistryConfig_new("official", "https://registry.lament-lang.org", "", 100, yes),
+        RegistryConfig_new("local", "file://~/.lament/local-registry", "", 50, yes)
+    ]
+
+    exhale {
+        "config_dir": config_dir,
+        "config_file": config_file,
+        "default_registries": default_registries
+    }
+}
+
+sigh RegistryConfigManager_load(manager) {
+    # Load registry configurations
+    if not file_exists(manager["config_file"]) {
+        exhale manager["default_registries"]
+    }
+
+    attempt {
+        remember content = read_file(manager["config_file"])
+        remember data = parse_json(content)
+        remember registries = []
+
+        if dict_has_key(data, "registries") {
+            for reg_data in data["registries"] {
+                remember config = RegistryConfig_from_dict(reg_data)
+                registries = append(registries, config)
+            }
+        }
+
+        exhale registries
+    } catch error {
+        confess "Warning: Could not load registry config: ${error}"
+        exhale manager["default_registries"]
+    }
+}
+
+sigh RegistryConfigManager_save(manager, registries) {
+    # Save registry configurations
+    remember reg_list = []
+    for config in registries {
+        reg_list = append(reg_list, RegistryConfig_to_dict(config))
+    }
+
+    remember data = { "registries": reg_list }
+    remember json_str = to_json(data)
+    write_file(manager["config_file"], json_str)
+}
+
+sigh RegistryConfigManager_add_registry(manager, config) {
+    # Add a new registry
+    remember registries = RegistryConfigManager_load(manager)
+
+    # Remove existing registry with same name
+    remember new_registries = []
+    for reg in registries {
+        if reg["name"] != config["name"] {
+            new_registries = append(new_registries, reg)
+        }
+    }
+
+    new_registries = append(new_registries, config)
+    RegistryConfigManager_save(manager, new_registries)
+}
+
+sigh RegistryConfigManager_remove_registry(manager, name) {
+    # Remove a registry by name
+    remember registries = RegistryConfigManager_load(manager)
+    remember original_len = length_of(registries)
+
+    remember new_registries = []
+    for reg in registries {
+        if reg["name"] != name {
+            new_registries = append(new_registries, reg)
+        }
+    }
+
+    if length_of(new_registries) < original_len {
+        RegistryConfigManager_save(manager, new_registries)
+        exhale yes
+    }
+
+    exhale no
+}
+
+sigh RegistryConfigManager_get_registry(manager, name) {
+    # Get a registry by name
+    remember registries = RegistryConfigManager_load(manager)
+
+    for reg in registries {
+        if reg["name"] == name {
+            exhale reg
+        }
+    }
+
+    exhale void
+}
+
+# ============================================================================
+# PACKAGE METADATA
+# ============================================================================
+
+sigh RegistryPackageInfo_new(name, version) {
+    # Create a registry package info object
+    exhale {
+        "name": name,
+        "version": version,
+        "description": "",
+        "author": "",
+        "license": "",
+        "homepage": "",
+        "repository": "",
+        "keywords": [],
+        "dependencies": [],
+        "checksum": "",
+        "size": 0,
+        "published_at": "",
+        "downloads": 0
+    }
+}
+
+sigh RegistryPackageInfo_from_dict(data) {
+    # Create from dictionary
+    remember info = RegistryPackageInfo_new(data["name"], data["version"])
+
+    if dict_has_key(data, "description") { info["description"] = data["description"] }
+    if dict_has_key(data, "author") { info["author"] = data["author"] }
+    if dict_has_key(data, "license") { info["license"] = data["license"] }
+    if dict_has_key(data, "homepage") { info["homepage"] = data["homepage"] }
+    if dict_has_key(data, "repository") { info["repository"] = data["repository"] }
+    if dict_has_key(data, "keywords") { info["keywords"] = data["keywords"] }
+    if dict_has_key(data, "dependencies") { info["dependencies"] = data["dependencies"] }
+    if dict_has_key(data, "checksum") { info["checksum"] = data["checksum"] }
+    if dict_has_key(data, "size") { info["size"] = data["size"] }
+    if dict_has_key(data, "published_at") { info["published_at"] = data["published_at"] }
+    if dict_has_key(data, "downloads") { info["downloads"] = data["downloads"] }
+
+    exhale info
+}
+
+sigh RegistryPackageInfo_to_dict(info) {
+    # Convert to dictionary
+    exhale {
+        "name": info["name"],
+        "version": info["version"],
+        "description": info["description"],
+        "author": info["author"],
+        "license": info["license"],
+        "homepage": info["homepage"],
+        "repository": info["repository"],
+        "keywords": info["keywords"],
+        "dependencies": info["dependencies"],
+        "checksum": info["checksum"],
+        "size": info["size"],
+        "published_at": info["published_at"],
+        "downloads": info["downloads"]
+    }
+}
+
+# ============================================================================
+# REGISTRY BACKEND - LOCAL
+# ============================================================================
+
+sigh LocalRegistryBackend_new(path) {
+    # Create a local filesystem registry backend
+    if not dir_exists(path) {
+        create_directory(path)
+    }
+
+    remember index_file = path_join(path, "index.json")
+    remember packages_dir = path_join(path, "packages")
+
+    if not dir_exists(packages_dir) {
+        create_directory(packages_dir)
+    }
+
+    exhale {
+        "path": path,
+        "index_file": index_file,
+        "packages_dir": packages_dir
+    }
+}
+
+sigh LocalRegistryBackend_load_index(backend) {
+    # Load the package index
+    if not file_exists(backend["index_file"]) {
+        exhale {}
+    }
+
+    remember content = read_file(backend["index_file"])
+    remember data = parse_json(content)
+    remember index = {}
+
+    remember keys = dict_keys(data)
+    for name in keys {
+        remember versions_data = data[name]
+        remember versions = []
+
+        for ver_data in versions_data {
+            remember info = RegistryPackageInfo_from_dict(ver_data)
+            versions = append(versions, info)
+        }
+
+        index = dict_set(index, name, versions)
+    }
+
+    exhale index
+}
+
+sigh LocalRegistryBackend_save_index(backend, index) {
+    # Save the package index
+    remember data = {}
+    remember keys = dict_keys(index)
+
+    for name in keys {
+        remember versions = index[name]
+        remember versions_data = []
+
+        for info in versions {
+            remember info_dict = RegistryPackageInfo_to_dict(info)
+            versions_data = append(versions_data, info_dict)
+        }
+
+        data = dict_set(data, name, versions_data)
+    }
+
+    remember json_str = to_json(data)
+    write_file(backend["index_file"], json_str)
+}
+
+sigh LocalRegistryBackend_search(backend, query) {
+    # Search for packages
+    remember index = LocalRegistryBackend_load_index(backend)
+    remember results = []
+    remember query_lower = string_lowercase(query)
+    remember keys = dict_keys(index)
+
+    for name in keys {
+        if string_contains(string_lowercase(name), query_lower) {
+            remember versions = index[name]
+            if length_of(versions) > 0 {
+                results = append(results, versions[length_of(versions) - 1])
+            }
+        } else {
+            # Search in keywords and description
+            remember versions = index[name]
+            for pkg in versions {
+                remember found = no
+
+                if string_contains(string_lowercase(pkg["description"]), query_lower) {
+                    found = yes
+                }
+
+                for kw in pkg["keywords"] {
+                    if string_contains(string_lowercase(kw), query_lower) {
+                        found = yes
+                    }
+                }
+
+                if found {
+                    results = append(results, pkg)
+                    break
+                }
+            }
+        }
+    }
+
+    exhale results
+}
+
+sigh LocalRegistryBackend_get_package_info(backend, name, version) {
+    # Get package information
+    remember index = LocalRegistryBackend_load_index(backend)
+
+    if not dict_has_key(index, name) {
+        exhale void
+    }
+
+    remember versions = index[name]
+    for pkg in versions {
+        if pkg["version"] == version {
+            exhale pkg
+        }
+    }
+
+    exhale void
+}
+
+sigh LocalRegistryBackend_get_versions(backend, name) {
+    # Get all versions of a package
+    remember index = LocalRegistryBackend_load_index(backend)
+
+    if not dict_has_key(index, name) {
+        exhale []
+    }
+
+    remember versions = index[name]
+    remember version_strs = []
+
+    for pkg in versions {
+        version_strs = append(version_strs, pkg["version"])
+    }
+
+    exhale version_strs
+}
+
+sigh LocalRegistryBackend_download_package(backend, name, version) {
+    # Download a package
+    remember package_file = path_join(backend["packages_dir"], "${name}-${version}.tar.gz")
+
+    if not file_exists(package_file) {
+        raise "Package not found: ${name}@${version}"
+    }
+
+    exhale read_bytes(package_file)
+}
+
+sigh LocalRegistryBackend_publish_package(backend, package_data, metadata) {
+    # Publish a package
+    # Save package file
+    remember package_file = path_join(backend["packages_dir"], "${metadata["name"]}-${metadata["version"]}.tar.gz")
+    write_bytes(package_file, package_data)
+
+    # Update index
+    remember index = LocalRegistryBackend_load_index(backend)
+
+    if not dict_has_key(index, metadata["name"]) {
+        index = dict_set(index, metadata["name"], [])
+    }
+
+    remember versions = index[metadata["name"]]
+
+    # Check if version already exists
+    remember new_versions = []
+    for pkg in versions {
+        if pkg["version"] != metadata["version"] {
+            new_versions = append(new_versions, pkg)
+        }
+    }
+
+    new_versions = append(new_versions, metadata)
+    index = dict_set(index, metadata["name"], new_versions)
+
+    LocalRegistryBackend_save_index(backend, index)
+    exhale yes
+}
+
+sigh LocalRegistryBackend_unpublish_package(backend, name, version) {
+    # Unpublish a package
+    remember index = LocalRegistryBackend_load_index(backend)
+
+    if not dict_has_key(index, name) {
+        exhale no
+    }
+
+    remember versions = index[name]
+    remember original_len = length_of(versions)
+
+    remember new_versions = []
+    for pkg in versions {
+        if pkg["version"] != version {
+            new_versions = append(new_versions, pkg)
+        }
+    }
+
+    if length_of(new_versions) < original_len {
+        index = dict_set(index, name, new_versions)
+        LocalRegistryBackend_save_index(backend, index)
+
+        # Remove package file
+        remember package_file = path_join(backend["packages_dir"], "${name}-${version}.tar.gz")
+        if file_exists(package_file) {
+            delete_file(package_file)
+        }
+
+        exhale yes
+    }
+
+    exhale no
+}
+
+# ============================================================================
+# REGISTRY BACKEND - REMOTE
+# ============================================================================
+
+sigh RemoteRegistryBackend_new(url, api_key) {
+    # Create a remote HTTP registry backend
+    if api_key == void { api_key = "" }
+
+    remember trimmed_url = url
+    if string_ends_with(url, "/") {
+        trimmed_url = string_slice(url, 0, string_length(url) - 1)
+    }
+
+    exhale {
+        "url": trimmed_url,
+        "api_key": api_key
+    }
+}
+
+sigh RemoteRegistryBackend_make_request(backend, path, method, data) {
+    # Make HTTP request to registry
+    if method == void { method = "GET" }
+    if data == void { data = void }
+
+    remember url = "${backend["url"]}${path}"
+    remember headers = {}
+
+    if string_length(backend["api_key"]) > 0 {
+        headers = dict_set(headers, "Authorization", "Bearer ${backend["api_key"]}")
+    }
+
+    attempt {
+        remember response = void
+
+        if method == "GET" {
+            response = http_get(url, headers, 30)
+        }
+
+        if method == "POST" {
+            headers = dict_set(headers, "Content-Type", "application/json")
+            response = http_post(url, data, headers, 30)
+        }
+
+        if response != void and response["status"] == 200 {
+            exhale parse_json(response["body"])
+        } else {
+            raise "HTTP ${response["status"]}"
+        }
+    } catch error {
+        raise "Registry request failed: ${error}"
+    }
+}
+
+sigh RemoteRegistryBackend_search(backend, query) {
+    # Search for packages
+    attempt {
+        remember results = RemoteRegistryBackend_make_request(backend, "/search?q=${query}", "GET", void)
+        remember packages = []
+
+        if dict_has_key(results, "packages") {
+            for pkg_data in results["packages"] {
+                remember info = RegistryPackageInfo_from_dict(pkg_data)
+                packages = append(packages, info)
+            }
+        }
+
+        exhale packages
+    } catch error {
+        confess "Search failed: ${error}"
+        exhale []
+    }
+}
+
+sigh RemoteRegistryBackend_get_package_info(backend, name, version) {
+    # Get package information
+    attempt {
+        remember result = RemoteRegistryBackend_make_request(backend, "/packages/${name}/${version}", "GET", void)
+        exhale RegistryPackageInfo_from_dict(result)
+    } catch error {
+        exhale void
+    }
+}
+
+sigh RemoteRegistryBackend_get_versions(backend, name) {
+    # Get all versions of a package
+    attempt {
+        remember result = RemoteRegistryBackend_make_request(backend, "/packages/${name}/versions", "GET", void)
+
+        if dict_has_key(result, "versions") {
+            exhale result["versions"]
+        } else {
+            exhale []
+        }
+    } catch error {
+        exhale []
+    }
+}
+
+sigh RemoteRegistryBackend_download_package(backend, name, version) {
+    # Download a package
+    remember url = "${backend["url"]}/packages/${name}/${version}/download"
+    remember headers = {}
+
+    if string_length(backend["api_key"]) > 0 {
+        headers = dict_set(headers, "Authorization", "Bearer ${backend["api_key"]}")
+    }
+
+    remember response = http_get(url, headers, 30)
+    exhale response["body"]
+}
+
+sigh RemoteRegistryBackend_publish_package(backend, package_data, metadata) {
+    # Publish a package to remote registry
+    confess "Publishing to remote registries requires server setup"
+    exhale no
+}
+
+sigh RemoteRegistryBackend_unpublish_package(backend, name, version) {
+    # Unpublish a package from remote registry
+    confess "Unpublishing from remote registries requires server setup"
+    exhale no
+}
+
+# ============================================================================
+# REGISTRY CLIENT
+# ============================================================================
+
+sigh Registry_new(cache_dir) {
+    # Create a registry client
+    if cache_dir == void {
+        cache_dir = path_join(home_directory(), ".lament/cache")
+    }
+
+    if not dir_exists(cache_dir) {
+        create_directory(cache_dir)
+    }
+
+    remember config_manager = RegistryConfigManager_new(void)
+    remember backends = {}
+
+    # Initialize backends
+    remember configs = RegistryConfigManager_load(config_manager)
+
+    for config in configs {
+        if not config["enabled"] {
+            continue
+        }
+
+        if string_starts_with(config["url"], "file://") {
+            # Local registry
+            remember path_str = string_slice(config["url"], 7, string_length(config["url"]))
+            remember path = expand_path(path_str)
+            remember backend = LocalRegistryBackend_new(path)
+            backends = dict_set(backends, config["name"], {
+                "type": "local",
+                "backend": backend
+            })
+        } else {
+            # Remote registry
+            remember backend = RemoteRegistryBackend_new(config["url"], config["api_key"])
+            backends = dict_set(backends, config["name"], {
+                "type": "remote",
+                "backend": backend
+            })
+        }
+    }
+
+    exhale {
+        "cache_dir": cache_dir,
+        "config_manager": config_manager,
+        "backends": backends
+    }
+}
+
+sigh Registry_search(registry, query) {
+    # Search for packages across all registries
+    remember results = []
+    remember seen = []
+    remember backend_names = dict_keys(registry["backends"])
+
+    for name in backend_names {
+        attempt {
+            remember backend_info = registry["backends"][name]
+            remember backend = backend_info["backend"]
+            remember backend_results = []
+
+            if backend_info["type"] == "local" {
+                backend_results = LocalRegistryBackend_search(backend, query)
+            } else {
+                backend_results = RemoteRegistryBackend_search(backend, query)
+            }
+
+            for pkg in backend_results {
+                remember key = "${pkg["name"]}@${pkg["version"]}"
+                remember already_seen = no
+
+                for seen_key in seen {
+                    if seen_key == key {
+                        already_seen = yes
+                    }
+                }
+
+                if not already_seen {
+                    seen = append(seen, key)
+                    results = append(results, pkg)
+                }
+            }
+        } catch error {
+            confess "Search failed for registry ${name}: ${error}"
+        }
+    }
+
+    exhale results
+}
+
+sigh Registry_get_package(registry, name, version) {
+    # Get package metadata
+    remember backend_names = dict_keys(registry["backends"])
+
+    for backend_name in backend_names {
+        attempt {
+            remember backend_info = registry["backends"][backend_name]
+            remember backend = backend_info["backend"]
+            remember info = void
+
+            if backend_info["type"] == "local" {
+                info = LocalRegistryBackend_get_package_info(backend, name, version)
+            } else {
+                info = RemoteRegistryBackend_get_package_info(backend, name, version)
+            }
+
+            if info != void {
+                # Convert to PackageMetadata format
+                breathe "package_manager"
+                remember metadata = PackageMetadata_new(info["name"], Version_parse(info["version"]))
+                metadata["description"] = info["description"]
+                metadata["author"] = info["author"]
+                metadata["license"] = info["license"]
+                metadata["homepage"] = info["homepage"]
+                metadata["repository"] = info["repository"]
+                metadata["keywords"] = info["keywords"]
+
+                # Convert dependencies
+                remember deps = []
+                for dep_data in info["dependencies"] {
+                    remember dep = PackageDependency_from_dict(dep_data)
+                    deps = append(deps, dep)
+                }
+                metadata["dependencies"] = deps
+
+                exhale metadata
+            }
+        } catch error {
+            continue
+        }
+    }
+
+    exhale void
+}
+
+sigh Registry_get_versions(registry, name) {
+    # Get all versions of a package
+    remember versions_set = []
+    remember backend_names = dict_keys(registry["backends"])
+
+    for backend_name in backend_names {
+        attempt {
+            remember backend_info = registry["backends"][backend_name]
+            remember backend = backend_info["backend"]
+            remember backend_versions = []
+
+            if backend_info["type"] == "local" {
+                backend_versions = LocalRegistryBackend_get_versions(backend, name)
+            } else {
+                backend_versions = RemoteRegistryBackend_get_versions(backend, name)
+            }
+
+            for ver_str in backend_versions {
+                remember already_added = no
+                for existing in versions_set {
+                    if existing == ver_str {
+                        already_added = yes
+                    }
+                }
+
+                if not already_added {
+                    versions_set = append(versions_set, ver_str)
+                }
+            }
+        } catch error {
+            continue
+        }
+    }
+
+    # Parse and sort versions
+    breathe "package_manager"
+    remember parsed = []
+
+    for ver_str in versions_set {
+        attempt {
+            remember version = Version_parse(ver_str)
+            parsed = append(parsed, version)
+        } catch error {
+            continue
+        }
+    }
+
+    # Sort versions (bubble sort)
+    remember n = length_of(parsed)
+    remember i = 0
+
+    while i < n {
+        remember j = 0
+        while j < n - i - 1 {
+            if Version_compare(parsed[j], parsed[j + 1]) > 0 {
+                # Swap
+                remember temp = parsed[j]
+                parsed[j] = parsed[j + 1]
+                parsed[j + 1] = temp
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+
+    exhale parsed
+}
+
+sigh Registry_download_package(registry, name, version) {
+    # Download a package from any registry
+    remember version_str = version
+    if typeof(version) != "string" {
+        breathe "package_manager"
+        version_str = Version_to_string(version)
+    }
+
+    remember backend_names = dict_keys(registry["backends"])
+
+    for backend_name in backend_names {
+        attempt {
+            remember backend_info = registry["backends"][backend_name]
+            remember backend = backend_info["backend"]
+
+            if backend_info["type"] == "local" {
+                exhale LocalRegistryBackend_download_package(backend, name, version_str)
+            } else {
+                exhale RemoteRegistryBackend_download_package(backend, name, version_str)
+            }
+        } catch error {
+            continue
+        }
+    }
+
+    raise "Package not found: ${name}@${version_str}"
+}
+
+sigh Registry_publish(registry, package_path, registry_name) {
+    # Publish a package to a registry
+    if registry_name == void { registry_name = "local" }
+
+    if not dict_has_key(registry["backends"], registry_name) {
+        confess "Registry not found: ${registry_name}"
+        exhale no
+    }
+
+    # Load package metadata
+    breathe "package_manager"
+    remember package_file = path_join(package_path, "package.lament")
+
+    if not file_exists(package_file) {
+        confess "No package.lament found in ${package_path}"
+        exhale no
+    }
+
+    remember metadata = PackageMetadata_from_file(package_file)
+
+    # Create tarball (simplified - just copy directory content)
+    remember package_data = "package_content"  # Placeholder
+
+    # Calculate checksum
+    remember checksum = sha256_hash(package_data)
+
+    # Create registry info
+    remember info = RegistryPackageInfo_new(metadata["name"], Version_to_string(metadata["version"]))
+    info["description"] = metadata["description"]
+    info["author"] = metadata["author"]
+    info["license"] = metadata["license"]
+    info["homepage"] = metadata["homepage"]
+    info["repository"] = metadata["repository"]
+    info["keywords"] = metadata["keywords"]
+
+    remember deps_list = []
+    for dep in metadata["dependencies"] {
+        deps_list = append(deps_list, PackageDependency_to_dict(dep))
+    }
+    info["dependencies"] = deps_list
+    info["checksum"] = checksum
+    info["size"] = string_length(package_data)
+    info["published_at"] = datetime_now()
+
+    # Publish
+    remember backend_info = registry["backends"][registry_name]
+    remember backend = backend_info["backend"]
+
+    if backend_info["type"] == "local" {
+        exhale LocalRegistryBackend_publish_package(backend, package_data, info)
+    } else {
+        exhale RemoteRegistryBackend_publish_package(backend, package_data, info)
+    }
+}
+
+sigh Registry_unpublish(registry, name, version, registry_name) {
+    # Unpublish a package from a registry
+    if registry_name == void { registry_name = "local" }
+
+    if not dict_has_key(registry["backends"], registry_name) {
+        confess "Registry not found: ${registry_name}"
+        exhale no
+    }
+
+    remember backend_info = registry["backends"][registry_name]
+    remember backend = backend_info["backend"]
+
+    if backend_info["type"] == "local" {
+        exhale LocalRegistryBackend_unpublish_package(backend, name, version)
+    } else {
+        exhale RemoteRegistryBackend_unpublish_package(backend, name, version)
+    }
+}
+
+sigh Registry_add_registry(registry, name, url, api_key) {
+    # Add a new registry
+    if api_key == void { api_key = "" }
+
+    remember config = RegistryConfig_new(name, url, api_key, 0, yes)
+    RegistryConfigManager_add_registry(registry["config_manager"], config)
+
+    confess "Added registry: ${name}"
+}
+
+sigh Registry_remove_registry(registry, name) {
+    # Remove a registry
+    if RegistryConfigManager_remove_registry(registry["config_manager"], name) {
+        if dict_has_key(registry["backends"], name) {
+            registry["backends"] = dict_delete(registry["backends"], name)
+        }
+        confess "Removed registry: ${name}"
+    } else {
+        confess "Registry not found: ${name}"
+    }
+}
+
+sigh Registry_list_registries(registry) {
+    # List all configured registries
+    remember configs = RegistryConfigManager_load(registry["config_manager"])
+
+    if length_of(configs) == 0 {
+        confess "No registries configured"
+        exhale []
+    }
+
+    confess "Configured registries:"
+    for config in configs {
+        remember status = if config["enabled"] { "enabled" } else { "disabled" }
+        confess "  ${config["name"]} (${status})"
+        confess "    URL: ${config["url"]}"
+        confess "    Priority: ${config["priority"]}"
+    }
+
+    exhale configs
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh main(args) {
+    # Main CLI entry point
+    if length_of(args) == 0 {
+        confess "Lament Package Registry - The Vault of Souls"
+        confess ""
+        confess "Usage:"
+        confess "  lament-registry search <query>"
+        confess "  lament-registry info <name> [version]"
+        confess "  lament-registry publish [path] [--registry NAME]"
+        confess "  lament-registry unpublish <name> <version> [--registry NAME]"
+        confess "  lament-registry add-registry <name> <url> [--api-key KEY]"
+        confess "  lament-registry remove-registry <name>"
+        confess "  lament-registry list-registries"
+        exhale 0
+    }
+
+    remember command = args[0]
+    remember registry = Registry_new(void)
+
+    if command == "search" {
+        if length_of(args) < 2 {
+            confess "Error: Search query required"
+            exhale 1
+        }
+
+        remember query = args[1]
+        remember results = Registry_search(registry, query)
+
+        if length_of(results) == 0 {
+            confess "No packages found"
+        } else {
+            confess "Found ${length_of(results)} package(s):"
+            for pkg in results {
+                confess "\n${pkg["name"]}@${pkg["version"]}"
+                confess "  ${pkg["description"]}"
+                if length_of(pkg["keywords"]) > 0 {
+                    remember kw_str = join_strings(pkg["keywords"], ", ")
+                    confess "  Keywords: ${kw_str}"
+                }
+                confess "  Author: ${pkg["author"]}"
+                confess "  License: ${pkg["license"]}"
+            }
+        }
+    }
+
+    if command == "info" {
+        if length_of(args) < 2 {
+            confess "Error: Package name required"
+            exhale 1
+        }
+
+        remember name = args[1]
+
+        if length_of(args) > 2 {
+            # Get specific version
+            remember version = args[2]
+            remember info = Registry_get_package(registry, name, version)
+
+            if info != void {
+                confess "${info["name"]}@${version}"
+                confess "Description: ${info["description"]}"
+                confess "Author: ${info["author"]}"
+                confess "License: ${info["license"]}"
+
+                if string_length(info["homepage"]) > 0 {
+                    confess "Homepage: ${info["homepage"]}"
+                }
+
+                if string_length(info["repository"]) > 0 {
+                    confess "Repository: ${info["repository"]}"
+                }
+
+                if length_of(info["dependencies"]) > 0 {
+                    confess "Dependencies:"
+                    for dep in info["dependencies"] {
+                        confess "  - ${dep["name"]} ${dep["constraint"]}"
+                    }
+                }
+            } else {
+                confess "Package not found: ${name}@${version}"
+            }
+        } else {
+            # List all versions
+            remember versions = Registry_get_versions(registry, name)
+
+            if length_of(versions) > 0 {
+                confess "Available versions of ${name}:"
+                for ver in versions {
+                    breathe "package_manager"
+                    confess "  ${Version_to_string(ver)}"
+                }
+            } else {
+                confess "Package not found: ${name}"
+            }
+        }
+    }
+
+    if command == "publish" {
+        remember path = "."
+        remember registry_name = "local"
+
+        if length_of(args) > 1 and not string_starts_with(args[1], "--") {
+            path = args[1]
+        }
+
+        # Parse --registry flag
+        remember i = 1
+        while i < length_of(args) {
+            if args[i] == "--registry" and i + 1 < length_of(args) {
+                registry_name = args[i + 1]
+                i = i + 2
+            } else {
+                i = i + 1
+            }
+        }
+
+        if Registry_publish(registry, path, registry_name) {
+            confess "Package published to ${registry_name}"
+        } else {
+            confess "Failed to publish package"
+        }
+    }
+
+    if command == "unpublish" {
+        if length_of(args) < 3 {
+            confess "Error: Package name and version required"
+            exhale 1
+        }
+
+        remember name = args[1]
+        remember version = args[2]
+        remember registry_name = "local"
+
+        # Parse --registry flag
+        remember i = 3
+        while i < length_of(args) {
+            if args[i] == "--registry" and i + 1 < length_of(args) {
+                registry_name = args[i + 1]
+                i = i + 2
+            } else {
+                i = i + 1
+            }
+        }
+
+        if Registry_unpublish(registry, name, version, registry_name) {
+            confess "Package unpublished from ${registry_name}"
+        } else {
+            confess "Failed to unpublish package"
+        }
+    }
+
+    if command == "add-registry" {
+        if length_of(args) < 3 {
+            confess "Error: Registry name and URL required"
+            exhale 1
+        }
+
+        remember name = args[1]
+        remember url = args[2]
+        remember api_key = ""
+
+        # Parse --api-key flag
+        remember i = 3
+        while i < length_of(args) {
+            if args[i] == "--api-key" and i + 1 < length_of(args) {
+                api_key = args[i + 1]
+                i = i + 2
+            } else {
+                i = i + 1
+            }
+        }
+
+        Registry_add_registry(registry, name, url, api_key)
+    }
+
+    if command == "remove-registry" {
+        if length_of(args) < 2 {
+            confess "Error: Registry name required"
+            exhale 1
+        }
+
+        remember name = args[1]
+        Registry_remove_registry(registry, name)
+    }
+
+    if command == "list-registries" {
+        Registry_list_registries(registry)
+    }
+
+    exhale 0
+}

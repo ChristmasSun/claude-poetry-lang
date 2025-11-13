@@ -1,23 +1,9 @@
 #!/usr/bin/env python3
-"""
-Lament Coverage Tool CLI
-=========================
-
-Command-line interface for Lament code coverage.
-
-Usage:
-    lament-coverage [options] <file.lament>
-
-Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
-"""
-
+"""Lament coverage tool CLI - Bootstrap wrapper."""
 import sys
 import os
-
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from tools.coverage import main
+sys.path.insert(0, os.path.dirname(__file__))
+from bootstrap_tool import run_lament_tool
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(run_lament_tool('coverage.lament', sys.argv[1:]))

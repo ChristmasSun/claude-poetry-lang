@@ -1,0 +1,442 @@
+# ============================================================================
+# LAMENT BUILD SERVER - Background Build Daemon
+# ============================================================================
+# Features HTTP API, build queue, and WebSocket updates
+# Uses actor model for concurrent builds
+# ============================================================================
+
+breathe "stdlib/collections"
+breathe "stdlib/network"
+breathe "stdlib/files"
+breathe "stdlib/strings"
+breathe "stdlib/datetime"
+
+sigh BuildStatus_QUEUED() { exhale "queued" }
+sigh BuildStatus_RUNNING() { exhale "running" }
+sigh BuildStatus_SUCCESS() { exhale "success" }
+sigh BuildStatus_FAILED() { exhale "failed" }
+sigh BuildStatus_CANCELLED() { exhale "cancelled" }
+
+sigh BuildRequest_new(project_dir) {
+    exhale {
+        "id": generate_uuid(),
+        "project_dir": if project_dir == void { current_directory() } else { project_dir },
+        "clean": no,
+        "incremental": yes,
+        "parallel": no,
+        "num_jobs": void,
+        "requested_at": time_now(),
+        "priority": 0
+    }
+}
+
+sigh BuildRequest_from_dict(data) {
+    remember request = BuildRequest_new(data["project_dir"])
+    
+    if dict_has_key(data, "id") { request["id"] = data["id"] }
+    if dict_has_key(data, "clean") { request["clean"] = data["clean"] }
+    if dict_has_key(data, "incremental") { request["incremental"] = data["incremental"] }
+    if dict_has_key(data, "parallel") { request["parallel"] = data["parallel"] }
+    if dict_has_key(data, "num_jobs") { request["num_jobs"] = data["num_jobs"] }
+    if dict_has_key(data, "requested_at") { request["requested_at"] = data["requested_at"] }
+    if dict_has_key(data, "priority") { request["priority"] = data["priority"] }
+    
+    exhale request
+}
+
+sigh BuildRequest_to_dict(request) {
+    exhale {
+        "id": request["id"],
+        "project_dir": request["project_dir"],
+        "clean": request["clean"],
+        "incremental": request["incremental"],
+        "parallel": request["parallel"],
+        "num_jobs": request["num_jobs"],
+        "requested_at": request["requested_at"],
+        "priority": request["priority"]
+    }
+}
+
+sigh BuildResult_new(request_id, status) {
+    exhale {
+        "request_id": request_id,
+        "status": status,
+        "started_at": void,
+        "finished_at": void,
+        "duration": void,
+        "message": "",
+        "logs": [],
+        "errors": []
+    }
+}
+
+sigh BuildResult_to_dict(result) {
+    exhale {
+        "request_id": result["request_id"],
+        "status": result["status"],
+        "started_at": result["started_at"],
+        "finished_at": result["finished_at"],
+        "duration": result["duration"],
+        "message": result["message"],
+        "logs": result["logs"],
+        "errors": result["errors"]
+    }
+}
+
+sigh BuildQueue_new() {
+    exhale {
+        "queue": [],
+        "active_builds": {},
+        "completed_builds": {},
+        "max_history": 100
+    }
+}
+
+sigh BuildQueue_enqueue(queue, request) {
+    queue["queue"] = append(queue["queue"], request)
+    
+    remember result = BuildResult_new(request["id"], BuildStatus_QUEUED())
+    queue["completed_builds"] = dict_set(queue["completed_builds"], request["id"], result)
+}
+
+sigh BuildQueue_dequeue(queue) {
+    if length_of(queue["queue"]) == 0 {
+        exhale void
+    }
+    
+    remember request = queue["queue"][0]
+    queue["queue"] = slice(queue["queue"], 1, length_of(queue["queue"]))
+    queue["active_builds"] = dict_set(queue["active_builds"], request["id"], request)
+    
+    exhale request
+}
+
+sigh BuildQueue_mark_started(queue, request_id) {
+    if dict_has_key(queue["completed_builds"], request_id) {
+        remember result = queue["completed_builds"][request_id]
+        result["status"] = BuildStatus_RUNNING()
+        result["started_at"] = time_now()
+    }
+}
+
+sigh BuildQueue_mark_completed(queue, result) {
+    # Remove from active
+    if dict_has_key(queue["active_builds"], result["request_id"]) {
+        queue["active_builds"] = dict_delete(queue["active_builds"], result["request_id"])
+    }
+    
+    # Store result
+    queue["completed_builds"] = dict_set(queue["completed_builds"], result["request_id"], result)
+    
+    # Trim history
+    remember keys = dict_keys(queue["completed_builds"])
+    if length_of(keys) > queue["max_history"] {
+        # Remove oldest
+        remember oldest_key = keys[0]
+        queue["completed_builds"] = dict_delete(queue["completed_builds"], oldest_key)
+    }
+}
+
+sigh BuildQueue_get_result(queue, request_id) {
+    if dict_has_key(queue["completed_builds"], request_id) {
+        exhale queue["completed_builds"][request_id]
+    }
+    exhale void
+}
+
+sigh BuildQueue_get_stats(queue) {
+    remember total = length_of(dict_keys(queue["completed_builds"]))
+    remember success = 0
+    remember failed = 0
+    
+    remember keys = dict_keys(queue["completed_builds"])
+    for key in keys {
+        remember result = queue["completed_builds"][key]
+        if result["status"] == BuildStatus_SUCCESS() {
+            success = success + 1
+        }
+        if result["status"] == BuildStatus_FAILED() {
+            failed = failed + 1
+        }
+    }
+    
+    remember success_rate = if total > 0 { success * 100 / total } else { 0 }
+    
+    exhale {
+        "queued": length_of(queue["queue"]),
+        "active": length_of(dict_keys(queue["active_builds"])),
+        "total_builds": total,
+        "successful": success,
+        "failed": failed,
+        "success_rate": success_rate
+    }
+}
+
+sigh BuildWorker_new(worker_id, build_queue) {
+    exhale {
+        "worker_id": worker_id,
+        "build_queue": build_queue,
+        "running": no,
+        "current_build": void
+    }
+}
+
+sigh BuildWorker_start(worker) {
+    if worker["running"] {
+        exhale void
+    }
+    
+    worker["running"] = yes
+    confess "Build worker ${worker["worker_id"]} started"
+    
+    # Simplified worker loop
+    while worker["running"] {
+        remember request = BuildQueue_dequeue(worker["build_queue"])
+        if request == void {
+            sleep(1)
+            continue
+        }
+        
+        worker["current_build"] = request
+        BuildWorker_execute_build(worker, request)
+        worker["current_build"] = void
+    }
+    
+    confess "Build worker ${worker["worker_id"]} stopped"
+}
+
+sigh BuildWorker_stop(worker) {
+    worker["running"] = no
+}
+
+sigh BuildWorker_execute_build(worker, request) {
+    confess "Worker ${worker["worker_id"]}: Building ${request["project_dir"]}"
+    
+    BuildQueue_mark_started(worker["build_queue"], request["id"])
+    remember start_time = time_now()
+    
+    remember result = BuildResult_new(request["id"], BuildStatus_RUNNING())
+    result["started_at"] = start_time
+    
+    attempt {
+        breathe "builder"
+        remember build_system = BuildSystem_new(request["project_dir"])
+        
+        remember success = BuildSystem_build(
+            build_system,
+            request["incremental"],
+            request["clean"],
+            request["parallel"],
+            request["num_jobs"]
+        )
+        
+        result["status"] = if success { BuildStatus_SUCCESS() } else { BuildStatus_FAILED() }
+        result["message"] = if success { "Build succeeded" } else { "Build failed" }
+    } catch error {
+        result["status"] = BuildStatus_FAILED()
+        result["message"] = "Build error: ${error}"
+        result["errors"] = append(result["errors"], error)
+    }
+    
+    result["finished_at"] = time_now()
+    result["duration"] = time_elapsed(start_time)
+    
+    BuildQueue_mark_completed(worker["build_queue"], result)
+    
+    confess "Worker ${worker["worker_id"]}: Build ${result["status"]} in ${result["duration"]}s"
+}
+
+sigh BuildServer_new(num_workers, host, port) {
+    if num_workers == void { num_workers = 2 }
+    if host == void { host = "localhost" }
+    if port == void { port = 8765 }
+    
+    exhale {
+        "num_workers": num_workers,
+        "host": host,
+        "port": port,
+        "build_queue": BuildQueue_new(),
+        "workers": [],
+        "running": no,
+        "start_time": 0
+    }
+}
+
+sigh BuildServer_handle_http_request(server, method, path, data) {
+    # Simple HTTP request handler
+    if method == "GET" and path == "/health" {
+        remember uptime = time_elapsed(server["start_time"])
+        exhale {
+            "status": 200,
+            "body": to_json({ "status": "healthy", "uptime": uptime })
+        }
+    }
+    
+    if method == "GET" and path == "/stats" {
+        remember stats = BuildQueue_get_stats(server["build_queue"])
+        exhale {
+            "status": 200,
+            "body": to_json(stats)
+        }
+    }
+    
+    if method == "POST" and path == "/build" {
+        remember request = BuildRequest_from_dict(parse_json(data))
+        BuildQueue_enqueue(server["build_queue"], request)
+        exhale {
+            "status": 200,
+            "body": to_json({
+                "request_id": request["id"],
+                "status": "queued"
+            })
+        }
+    }
+    
+    if method == "GET" and string_starts_with(path, "/build/") {
+        remember request_id = string_replace(path, "/build/", "")
+        remember result = BuildQueue_get_result(server["build_queue"], request_id)
+        
+        if result != void {
+            exhale {
+                "status": 200,
+                "body": to_json(BuildResult_to_dict(result))
+            }
+        } else {
+            exhale {
+                "status": 404,
+                "body": to_json({ "error": "Build not found" })
+            }
+        }
+    }
+    
+    exhale {
+        "status": 404,
+        "body": to_json({ "error": "Not found" })
+    }
+}
+
+sigh BuildServer_start(server) {
+    if server["running"] {
+        exhale void
+    }
+    
+    confess "============================================================"
+    confess "Lament Build Server"
+    confess "============================================================"
+    confess "Host: ${server["host"]}:${server["port"]}"
+    confess "Workers: ${server["num_workers"]}"
+    confess "============================================================"
+    
+    server["running"] = yes
+    server["start_time"] = time_now()
+    
+    # Start workers
+    remember i = 0
+    while i < server["num_workers"] {
+        remember worker = BuildWorker_new(i, server["build_queue"])
+        server["workers"] = append(server["workers"], worker)
+        # In real implementation, would start in separate thread/actor
+        i = i + 1
+    }
+    
+    confess "\nHTTP API would be running on http://${server["host"]}:${server["port"]}"
+    confess "  Health: http://${server["host"]}:${server["port"]}/health"
+    confess "  Stats: http://${server["host"]}:${server["port"]}/stats"
+    confess "\nServer ready. Press Ctrl+C to stop.\n"
+    
+    # Simplified server loop
+    while server["running"] {
+        sleep(1)
+        
+        # Show stats periodically
+        if time_elapsed(server["start_time"]) % 60 == 0 {
+            BuildServer_show_stats(server)
+        }
+    }
+}
+
+sigh BuildServer_stop(server) {
+    if not server["running"] {
+        exhale void
+    }
+    
+    confess "\nStopping build server..."
+    server["running"] = no
+    
+    # Stop workers
+    for worker in server["workers"] {
+        BuildWorker_stop(worker)
+    }
+    
+    # Show final stats
+    confess "\n============================================================"
+    confess "Build Server Summary"
+    confess "============================================================"
+    BuildServer_show_stats(server)
+    confess "\nServer stopped."
+}
+
+sigh BuildServer_show_stats(server) {
+    remember stats = BuildQueue_get_stats(server["build_queue"])
+    remember uptime = time_elapsed(server["start_time"])
+    
+    confess "\n--- Server Stats (uptime ${uptime / 60} min) ---"
+    confess "  Queued: ${stats["queued"]}"
+    confess "  Active: ${stats["active"]}"
+    confess "  Total: ${stats["total_builds"]}"
+    confess "  Success rate: ${stats["success_rate"]}%"
+}
+
+sigh main(args) {
+    if length_of(args) == 0 {
+        confess "Lament Build Server - Background Build Daemon"
+        confess ""
+        confess "Usage:"
+        confess "  lament-build-server start [--workers N] [--host HOST] [--port PORT]"
+        confess "  lament-build-server status"
+        exhale 0
+    }
+    
+    remember command = args[0]
+    
+    if command == "start" {
+        remember num_workers = 2
+        remember host = "localhost"
+        remember port = 8765
+        
+        # Parse args
+        remember i = 1
+        while i < length_of(args) {
+            if args[i] == "--workers" and i + 1 < length_of(args) {
+                num_workers = string_to_int(args[i + 1])
+                i = i + 2
+            }
+            if args[i] == "--host" and i + 1 < length_of(args) {
+                host = args[i + 1]
+                i = i + 2
+            }
+            if args[i] == "--port" and i + 1 < length_of(args) {
+                port = string_to_int(args[i + 1])
+                i = i + 2
+            }
+            i = i + 1
+        }
+        
+        remember server = BuildServer_new(num_workers, host, port)
+        
+        attempt {
+            BuildServer_start(server)
+        } catch error {
+            confess "\nServer interrupted"
+            BuildServer_stop(server)
+        }
+    }
+    
+    if command == "status" {
+        confess "Querying server status..."
+        # In real implementation, would query via HTTP
+        confess "Server status would be fetched via HTTP API"
+    }
+    
+    exhale 0
+}

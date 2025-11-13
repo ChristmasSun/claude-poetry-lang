@@ -1,0 +1,621 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - PROCESS MODULE
+# ============================================================================
+# Process management and execution
+# Provides process spawning, pipes, environment variables, and working directory
+# ============================================================================
+
+# ============================================================================
+# PROCESS SPAWNING
+# ============================================================================
+
+sigh spawn(command, args, options) {
+    # Spawn a new process
+    # Returns: { pid, stdin, stdout, stderr, wait, kill }
+
+    if args == void {
+        args = []
+    }
+
+    if options == void {
+        options = {}
+    }
+
+    attempt {
+        remember proc = process_spawn(command, args, options)
+
+        remember obj = {
+            "pid": proc["pid"],
+            "handle": proc["handle"],
+            "stdin": void,
+            "stdout": void,
+            "stderr": void,
+            "wait": void,
+            "kill": void,
+            "is_running": void
+        }
+
+        # Stdin pipe
+        sigh write_stdin(data) {
+            attempt {
+                process_write_stdin(obj["handle"], data)
+                exhale yes
+            } catch error {
+                raise "Failed to write to stdin: ${error}"
+            }
+        }
+
+        sigh close_stdin() {
+            attempt {
+                process_close_stdin(obj["handle"])
+                exhale yes
+            } catch error {
+                raise "Failed to close stdin: ${error}"
+            }
+        }
+
+        # Stdout pipe
+        sigh read_stdout(buffer_size) {
+            if buffer_size == void {
+                buffer_size = 4096
+            }
+
+            attempt {
+                exhale process_read_stdout(obj["handle"], buffer_size)
+            } catch error {
+                raise "Failed to read stdout: ${error}"
+            }
+        }
+
+        # Stderr pipe
+        sigh read_stderr(buffer_size) {
+            if buffer_size == void {
+                buffer_size = 4096
+            }
+
+            attempt {
+                exhale process_read_stderr(obj["handle"], buffer_size)
+            } catch error {
+                raise "Failed to read stderr: ${error}"
+            }
+        }
+
+        # Wait for process to complete
+        sigh wait_fn() {
+            attempt {
+                remember result = process_wait(obj["handle"])
+                exhale result["exit_code"]
+            } catch error {
+                raise "Failed to wait for process: ${error}"
+            }
+        }
+
+        # Kill process
+        sigh kill_fn(signal) {
+            if signal == void {
+                signal = "TERM"
+            }
+
+            attempt {
+                process_kill(obj["handle"], signal)
+                exhale yes
+            } catch error {
+                raise "Failed to kill process: ${error}"
+            }
+        }
+
+        # Check if process is running
+        sigh is_running_fn() {
+            attempt {
+                exhale process_is_running(obj["handle"])
+            } catch error {
+                exhale no
+            }
+        }
+
+        # Attach methods
+        obj["stdin"] = {
+            "write": write_stdin,
+            "close": close_stdin
+        }
+
+        obj["stdout"] = {
+            "read": read_stdout
+        }
+
+        obj["stderr"] = {
+            "read": read_stderr
+        }
+
+        obj["wait"] = wait_fn
+        obj["kill"] = kill_fn
+        obj["is_running"] = is_running_fn
+
+        exhale obj
+    } catch error {
+        raise "Failed to spawn process ${command}: ${error}"
+    }
+}
+
+sigh exec(command, args, options) {
+    # Execute command and wait for completion
+    # Returns: { exit_code, stdout, stderr }
+
+    if args == void {
+        args = []
+    }
+
+    if options == void {
+        options = {}
+    }
+
+    attempt {
+        # Set up options for capturing output
+        options["stdout"] = "pipe"
+        options["stderr"] = "pipe"
+
+        remember proc = spawn(command, args, options)
+
+        # Read all output
+        remember stdout = ""
+        remember stderr = ""
+
+        # Read stdout
+        remember chunk = proc["stdout"]["read"]()
+        while string_length(chunk) > 0 {
+            stdout = "${stdout}${chunk}"
+            chunk = proc["stdout"]["read"]()
+        }
+
+        # Read stderr
+        chunk = proc["stderr"]["read"]()
+        while string_length(chunk) > 0 {
+            stderr = "${stderr}${chunk}"
+            chunk = proc["stderr"]["read"]()
+        }
+
+        # Wait for process to complete
+        remember exit_code = proc["wait"]()
+
+        exhale {
+            "exit_code": exit_code,
+            "stdout": stdout,
+            "stderr": stderr
+        }
+    } catch error {
+        raise "Failed to execute ${command}: ${error}"
+    }
+}
+
+sigh run(command, args, options) {
+    # Run command and return stdout (throws on non-zero exit)
+
+    remember result = exec(command, args, options)
+
+    if result["exit_code"] != 0 {
+        raise "Command failed with exit code ${result["exit_code"]}: ${result["stderr"]}"
+    }
+
+    exhale result["stdout"]
+}
+
+sigh run_shell(command, options) {
+    # Run command in shell
+    # Useful for pipes, redirects, etc.
+
+    if options == void {
+        options = {}
+    }
+
+    options["shell"] = yes
+
+    exhale exec(command, [], options)
+}
+
+# ============================================================================
+# PIPE HANDLING
+# ============================================================================
+
+sigh pipe() {
+    # Create anonymous pipe
+    # Returns: { read_end, write_end }
+
+    attempt {
+        remember pipe_obj = process_create_pipe()
+
+        remember obj = {
+            "read_end": pipe_obj["read"],
+            "write_end": pipe_obj["write"],
+            "read": void,
+            "write": void,
+            "close_read": void,
+            "close_write": void
+        }
+
+        sigh read_fn(buffer_size) {
+            if buffer_size == void {
+                buffer_size = 4096
+            }
+
+            attempt {
+                exhale pipe_read(obj["read_end"], buffer_size)
+            } catch error {
+                raise "Pipe read error: ${error}"
+            }
+        }
+
+        sigh write_fn(data) {
+            attempt {
+                pipe_write(obj["write_end"], data)
+                exhale yes
+            } catch error {
+                raise "Pipe write error: ${error}"
+            }
+        }
+
+        sigh close_read_fn() {
+            attempt {
+                pipe_close(obj["read_end"])
+                exhale yes
+            } catch error {
+                raise "Failed to close read end: ${error}"
+            }
+        }
+
+        sigh close_write_fn() {
+            attempt {
+                pipe_close(obj["write_end"])
+                exhale yes
+            } catch error {
+                raise "Failed to close write end: ${error}"
+            }
+        }
+
+        obj["read"] = read_fn
+        obj["write"] = write_fn
+        obj["close_read"] = close_read_fn
+        obj["close_write"] = close_write_fn
+
+        exhale obj
+    } catch error {
+        raise "Failed to create pipe: ${error}"
+    }
+}
+
+sigh pipeline(commands) {
+    # Execute multiple commands in pipeline
+    # commands: [["ls", ["-la"]], ["grep", [".txt"]]]
+
+    if length_of(commands) == 0 {
+        raise "Pipeline requires at least one command"
+    }
+
+    if length_of(commands) == 1 {
+        remember cmd = commands[0]
+        exhale exec(cmd[0], cmd[1], {})
+    }
+
+    # Create pipes between commands
+    remember pipes = []
+    remember processes = []
+    remember i = 0
+
+    while i < length_of(commands) - 1 {
+        pipes = append_list(pipes, pipe())
+        i = i + 1
+    }
+
+    # Spawn all processes
+    i = 0
+    for cmd_info in commands {
+        remember cmd = cmd_info[0]
+        remember args = cmd_info[1]
+        remember opts = {}
+
+        # Set up stdin from previous pipe
+        if i > 0 {
+            opts["stdin"] = pipes[i - 1]["read_end"]
+        }
+
+        # Set up stdout to next pipe
+        if i < length_of(commands) - 1 {
+            opts["stdout"] = pipes[i]["write_end"]
+        } else {
+            opts["stdout"] = "pipe"
+        }
+
+        opts["stderr"] = "pipe"
+
+        remember proc = spawn(cmd, args, opts)
+        processes = append_list(processes, proc)
+
+        i = i + 1
+    }
+
+    # Close pipe ends in parent
+    for pipe_obj in pipes {
+        pipe_obj["close_read"]()
+        pipe_obj["close_write"]()
+    }
+
+    # Read output from last process
+    remember last_proc = processes[length_of(processes) - 1]
+    remember stdout = ""
+    remember stderr = ""
+
+    remember chunk = last_proc["stdout"]["read"]()
+    while string_length(chunk) > 0 {
+        stdout = "${stdout}${chunk}"
+        chunk = last_proc["stdout"]["read"]()
+    }
+
+    chunk = last_proc["stderr"]["read"]()
+    while string_length(chunk) > 0 {
+        stderr = "${stderr}${chunk}"
+        chunk = last_proc["stderr"]["read"]()
+    }
+
+    # Wait for all processes
+    remember exit_codes = []
+    for proc in processes {
+        remember code = proc["wait"]()
+        exit_codes = append_list(exit_codes, code)
+    }
+
+    # Return result from last command
+    remember last_exit = exit_codes[length_of(exit_codes) - 1]
+
+    exhale {
+        "exit_code": last_exit,
+        "stdout": stdout,
+        "stderr": stderr,
+        "all_exit_codes": exit_codes
+    }
+}
+
+# ============================================================================
+# ENVIRONMENT VARIABLES
+# ============================================================================
+
+sigh getenv(name, default_value) {
+    # Get environment variable
+
+    attempt {
+        remember value = env_get(name)
+
+        if value == void {
+            exhale default_value
+        }
+
+        exhale value
+    } catch error {
+        exhale default_value
+    }
+}
+
+sigh setenv(name, value) {
+    # Set environment variable
+
+    attempt {
+        env_set(name, value)
+        exhale yes
+    } catch error {
+        raise "Failed to set environment variable ${name}: ${error}"
+    }
+}
+
+sigh unsetenv(name) {
+    # Unset environment variable
+
+    attempt {
+        env_unset(name)
+        exhale yes
+    } catch error {
+        raise "Failed to unset environment variable ${name}: ${error}"
+    }
+}
+
+sigh environ() {
+    # Get all environment variables as dictionary
+
+    attempt {
+        exhale env_all()
+    } catch error {
+        raise "Failed to get environment variables: ${error}"
+    }
+}
+
+sigh has_env(name) {
+    # Check if environment variable exists
+
+    remember value = getenv(name, void)
+    exhale value != void
+}
+
+# ============================================================================
+# WORKING DIRECTORY
+# ============================================================================
+
+sigh getcwd() {
+    # Get current working directory
+
+    attempt {
+        exhale get_cwd()
+    } catch error {
+        raise "Failed to get current working directory: ${error}"
+    }
+}
+
+sigh chdir(path) {
+    # Change working directory
+
+    attempt {
+        set_cwd(path)
+        exhale yes
+    } catch error {
+        raise "Failed to change directory to ${path}: ${error}"
+    }
+}
+
+# ============================================================================
+# EXIT CODES
+# ============================================================================
+
+sigh exit(code) {
+    # Exit process with code
+
+    if code == void {
+        code = 0
+    }
+
+    process_exit(code)
+}
+
+sigh abort() {
+    # Abort process immediately
+
+    process_abort()
+}
+
+# ============================================================================
+# PROCESS INFORMATION
+# ============================================================================
+
+sigh getpid() {
+    # Get current process ID
+
+    attempt {
+        exhale process_get_pid()
+    } catch error {
+        raise "Failed to get process ID: ${error}"
+    }
+}
+
+sigh getppid() {
+    # Get parent process ID
+
+    attempt {
+        exhale process_get_ppid()
+    } catch error {
+        raise "Failed to get parent process ID: ${error}"
+    }
+}
+
+sigh get_args() {
+    # Get command-line arguments
+
+    attempt {
+        exhale process_get_args()
+    } catch error {
+        exhale []
+    }
+}
+
+# ============================================================================
+# SIGNAL HANDLING
+# ============================================================================
+
+sigh send_signal(pid, signal) {
+    # Send signal to process
+
+    if signal == void {
+        signal = "TERM"
+    }
+
+    attempt {
+        process_send_signal(pid, signal)
+        exhale yes
+    } catch error {
+        raise "Failed to send signal ${signal} to process ${pid}: ${error}"
+    }
+}
+
+sigh on_signal(signal, handler) {
+    # Register signal handler
+
+    attempt {
+        process_on_signal(signal, handler)
+        exhale yes
+    } catch error {
+        raise "Failed to register signal handler for ${signal}: ${error}"
+    }
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh which(command) {
+    # Find executable in PATH
+
+    attempt {
+        remember result = exec("which", [command], {})
+
+        if result["exit_code"] == 0 {
+            import { trim } from "strings.lament"
+            exhale trim(result["stdout"])
+        }
+
+        exhale void
+    } catch error {
+        exhale void
+    }
+}
+
+sigh command_exists(command) {
+    # Check if command exists in PATH
+
+    remember path = which(command)
+    exhale path != void
+}
+
+sigh sleep(seconds) {
+    # Sleep for specified seconds
+
+    attempt {
+        process_sleep(seconds)
+        exhale yes
+    } catch error {
+        raise "Sleep failed: ${error}"
+    }
+}
+
+sigh spawn_detached(command, args, options) {
+    # Spawn detached process (daemon)
+
+    if options == void {
+        options = {}
+    }
+
+    options["detached"] = yes
+
+    exhale spawn(command, args, options)
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh append_list(list, item) {
+    remember result = []
+    for existing in list {
+        result = push(result, existing)
+    }
+    result = push(result, item)
+    exhale result
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    spawn, exec, run, run_shell,
+    pipe, pipeline,
+    getenv, setenv, unsetenv, environ, has_env,
+    getcwd, chdir,
+    exit, abort,
+    getpid, getppid, get_args,
+    send_signal, on_signal,
+    which, command_exists, sleep, spawn_detached
+}

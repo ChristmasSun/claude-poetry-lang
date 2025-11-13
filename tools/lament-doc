@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Lament documentation generator CLI."""
+"""Lament documentation generator CLI - Bootstrap wrapper."""
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-from tools.docgen import main
+sys.path.insert(0, os.path.dirname(__file__))
+from bootstrap_tool import run_lament_tool
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(run_lament_tool('docgen.lament', sys.argv[1:]))

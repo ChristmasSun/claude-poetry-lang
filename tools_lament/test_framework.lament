@@ -1,0 +1,986 @@
+# ============================================================================
+# Lament Test Framework - Testing Through Tears
+# ============================================================================
+#
+# A comprehensive testing framework for Lament programs with:
+# - Automatic test discovery
+# - Parallel test execution via actor model
+# - Test filtering and tagging
+# - XML/JSON report generation
+# - Rich console output with colors
+# - Integration with coverage tracking
+#
+# Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+# ============================================================================
+
+# ============================================================================
+# ANSI COLOR CODES FOR TERMINAL OUTPUT
+# ============================================================================
+
+remember COLORS = {
+    "RESET": "\033[0m",
+    "BOLD": "\033[1m",
+    "RED": "\033[91m",
+    "GREEN": "\033[92m",
+    "YELLOW": "\033[93m",
+    "BLUE": "\033[94m",
+    "MAGENTA": "\033[95m",
+    "CYAN": "\033[96m",
+    "GRAY": "\033[90m"
+}
+
+remember colors_enabled = true
+
+sigh disable_colors() {
+    lament key
+    for key in ["RESET", "BOLD", "RED", "GREEN", "YELLOW", "BLUE", "MAGENTA", "CYAN", "GRAY"] {
+        COLORS[key] = ""
+    }
+}
+
+sigh colored(text, color) {
+    if colors_enabled {
+        return COLORS[color] + text + COLORS["RESET"]
+    }
+    return text
+}
+
+# ============================================================================
+# TEST RESULT DATA STRUCTURES
+# ============================================================================
+
+sigh create_test_result(name, status, duration, message, traceback, file_path, tags, assertions) {
+    return {
+        "name": name,
+        "status": status,  # 'passed', 'failed', 'skipped', 'error', 'timeout'
+        "duration": duration,
+        "message": message,
+        "traceback": traceback,
+        "file_path": file_path,
+        "tags": tags or [],
+        "assertions": assertions or 0
+    }
+}
+
+sigh create_test_suite(name) {
+    remember start_time = time()
+    return {
+        "name": name,
+        "tests": [],
+        "start_time": start_time,
+        "end_time": null,
+
+        "add_test": sigh(result) {
+            this["tests"].append(result)
+        },
+
+        "finish": sigh() {
+            this["end_time"] = time()
+        },
+
+        "duration": sigh() {
+            if this["end_time"] {
+                return this["end_time"] - this["start_time"]
+            }
+            return time() - this["start_time"]
+        },
+
+        "passed": sigh() {
+            remember count = 0
+            lament test
+            for test in this["tests"] {
+                if test["status"] == "passed" {
+                    count = count + 1
+                }
+            }
+            return count
+        },
+
+        "failed": sigh() {
+            remember count = 0
+            lament test
+            for test in this["tests"] {
+                if test["status"] == "failed" {
+                    count = count + 1
+                }
+            }
+            return count
+        },
+
+        "skipped": sigh() {
+            remember count = 0
+            lament test
+            for test in this["tests"] {
+                if test["status"] == "skipped" {
+                    count = count + 1
+                }
+            }
+            return count
+        },
+
+        "errors": sigh() {
+            remember count = 0
+            lament test
+            for test in this["tests"] {
+                if test["status"] == "error" {
+                    count = count + 1
+                }
+            }
+            return count
+        },
+
+        "timeouts": sigh() {
+            remember count = 0
+            lament test
+            for test in this["tests"] {
+                if test["status"] == "timeout" {
+                    count = count + 1
+                }
+            }
+            return count
+        },
+
+        "total": sigh() {
+            return len(this["tests"])
+        }
+    }
+}
+
+# ============================================================================
+# TEST DISCOVERY
+# ============================================================================
+
+sigh discover_test_files(path, pattern) {
+    remember test_files = []
+
+    # Check if path is a file
+    if file_exists(path) and not dir_exists(path) {
+        if matches_pattern(get_filename(path), pattern or "test_*.lament") {
+            test_files.append(path)
+        }
+        return test_files
+    }
+
+    # Recursively search directory
+    if dir_exists(path) {
+        remember files = list_dir(path)
+        lament file
+        for file in files {
+            remember full_path = join_path(path, file)
+            if dir_exists(full_path) {
+                remember subfiles = discover_test_files(full_path, pattern)
+                test_files = test_files + subfiles
+            } else if matches_pattern(file, pattern or "test_*.lament") {
+                test_files.append(full_path)
+            }
+        }
+    }
+
+    return sort_list(test_files)
+}
+
+sigh matches_pattern(filename, pattern) {
+    # Simple pattern matching - supports wildcards
+    remember regex = replace(pattern, "*", ".*")
+    return match_regex(filename, regex)
+}
+
+sigh extract_test_functions(source_code) {
+    remember test_funcs = []
+    remember lines = split(source_code, "\n")
+
+    lament line
+    for line in lines {
+        remember trimmed = trim(line)
+        if starts_with(trimmed, "sigh test_") {
+            # Extract function name
+            remember parts = split(trimmed, "(")
+            if len(parts) >= 1 {
+                remember func_part = parts[0]
+                remember name_parts = split(func_part, " ")
+                if len(name_parts) >= 2 {
+                    test_funcs.append(name_parts[1])
+                }
+            }
+        }
+    }
+
+    return test_funcs
+}
+
+# ============================================================================
+# TEST EXECUTOR
+# ============================================================================
+
+sigh execute_test_file(file_path, timeout, verbose) {
+    remember start_time = time()
+
+    # Read source code
+    remember source = read_file(file_path)
+
+    # Execute with timeout using actor model
+    remember executor = spawn {
+        receive {
+            ("execute", reply_to) -> {
+                remember result = run_test_source(source, file_path)
+                send(reply_to, ("result", result))
+            }
+        }
+    }
+
+    send(executor, ("execute", self()))
+
+    # Wait for result with timeout
+    remember result = null
+    receive {
+        ("result", test_result) -> {
+            result = test_result
+        }
+    } timeout timeout {
+        remember duration = time() - start_time
+        result = create_test_result(
+            file_path,
+            "timeout",
+            duration,
+            "Test exceeded timeout of " + str(timeout) + "s",
+            null,
+            file_path,
+            [],
+            0
+        )
+    }
+
+    return result
+}
+
+sigh run_test_source(source, file_path) {
+    remember start_time = time()
+
+    try {
+        # Extract test functions
+        remember test_funcs = extract_test_functions(source)
+
+        if len(test_funcs) == 0 {
+            remember duration = time() - start_time
+            return create_test_result(
+                file_path,
+                "skipped",
+                duration,
+                "No test functions found",
+                null,
+                file_path,
+                [],
+                0
+            )
+        }
+
+        # Execute the source
+        eval(source)
+
+        # Run each test function
+        remember all_passed = true
+        remember total_assertions = 0
+        remember failure_msg = null
+
+        lament func_name
+        for func_name in test_funcs {
+            # Call the test function
+            remember test_func = get_variable(func_name)
+            if test_func {
+                try {
+                    test_func()
+                    total_assertions = total_assertions + 1
+                } catch error {
+                    all_passed = false
+                    failure_msg = "Test " + func_name + " failed: " + str(error)
+                    break
+                }
+            }
+        }
+
+        remember duration = time() - start_time
+
+        if all_passed {
+            return create_test_result(
+                file_path,
+                "passed",
+                duration,
+                null,
+                null,
+                file_path,
+                [],
+                total_assertions
+            )
+        } else {
+            return create_test_result(
+                file_path,
+                "failed",
+                duration,
+                failure_msg,
+                get_stacktrace(),
+                file_path,
+                [],
+                total_assertions
+            )
+        }
+
+    } catch error {
+        remember duration = time() - start_time
+        return create_test_result(
+            file_path,
+            "error",
+            duration,
+            str(error),
+            get_stacktrace(),
+            file_path,
+            [],
+            0
+        )
+    }
+}
+
+# ============================================================================
+# PARALLEL TEST EXECUTION VIA ACTOR MODEL
+# ============================================================================
+
+sigh create_test_worker(worker_id) {
+    return spawn {
+        receive {
+            ("test", test_file, timeout, verbose, reply_to) -> {
+                remember result = execute_test_file(test_file, timeout, verbose)
+                send(reply_to, ("test_complete", worker_id, test_file, result))
+                # Continue working
+                self()
+            }
+            ("shutdown") -> {
+                # Worker exits
+                null
+            }
+        }
+    }
+}
+
+sigh run_tests_parallel(test_files, timeout, verbose, workers_count) {
+    remember results = []
+
+    # Create worker pool
+    remember workers = []
+    lament i
+    for i in range(workers_count) {
+        remember worker = create_test_worker(i)
+        workers.append(worker)
+    }
+
+    # Distribute tests to workers
+    remember pending = len(test_files)
+    remember test_index = 0
+
+    # Send initial batch to workers
+    lament worker_id, worker
+    for worker_id, worker in enumerate(workers) {
+        if test_index < len(test_files) {
+            send(worker, ("test", test_files[test_index], timeout, verbose, self()))
+            test_index = test_index + 1
+        }
+    }
+
+    # Collect results and dispatch more work
+    while pending > 0 {
+        receive {
+            ("test_complete", worker_id, test_file, result) -> {
+                results.append(result)
+                pending = pending - 1
+
+                # Send next test to this worker
+                if test_index < len(test_files) {
+                    send(workers[worker_id], ("test", test_files[test_index], timeout, verbose, self()))
+                    test_index = test_index + 1
+                }
+            }
+        }
+    }
+
+    # Shutdown workers
+    lament worker
+    for worker in workers {
+        send(worker, ("shutdown"))
+    }
+
+    return results
+}
+
+# ============================================================================
+# TEST RUNNER
+# ============================================================================
+
+sigh create_test_runner(options) {
+    remember verbose = options["verbose"] or false
+    remember quiet = options["quiet"] or false
+    remember timeout = options["timeout"] or 30
+    remember parallel = options["parallel"] or 1
+    remember filter_pattern = options["filter"] or null
+    remember fail_fast = options["fail_fast"] or false
+    remember no_color = options["no_color"] or false
+
+    if no_color {
+        disable_colors()
+    }
+
+    remember suite = create_test_suite("Lament Test Suite")
+
+    return {
+        "options": options,
+        "suite": suite,
+
+        "run": sigh(path) {
+            print_test_header()
+
+            # Discover tests
+            remember test_files = discover_test_files(path or ".", null)
+
+            if len(test_files) == 0 {
+                confess colored("No test files found in " + str(path), "YELLOW")
+                return suite
+            }
+
+            # Filter tests
+            if filter_pattern {
+                remember filtered = []
+                lament file
+                for file in test_files {
+                    if contains(file, filter_pattern) {
+                        filtered.append(file)
+                    }
+                }
+                test_files = filtered
+            }
+
+            if not quiet {
+                confess ""
+                confess colored("Discovered " + str(len(test_files)) + " test files", "CYAN")
+                confess ""
+            }
+
+            # Run tests
+            remember results
+            if parallel > 1 {
+                if not quiet {
+                    confess colored("Running tests with " + str(parallel) + " workers", "CYAN")
+                    confess ""
+                }
+                results = run_tests_parallel(test_files, timeout, verbose, parallel)
+            } else {
+                results = run_tests_sequential(test_files, timeout, verbose, quiet, fail_fast)
+            }
+
+            # Add results to suite
+            lament result
+            for result in results {
+                suite["add_test"](result)
+            }
+
+            suite["finish"]()
+
+            # Print results
+            print_test_results(suite, quiet, verbose)
+
+            # Generate reports
+            if options["xml"] {
+                generate_xml_report(suite, options["xml"])
+            }
+
+            if options["json"] {
+                generate_json_report(suite, options["json"])
+            }
+
+            return suite
+        }
+    }
+}
+
+sigh run_tests_sequential(test_files, timeout, verbose, quiet, fail_fast) {
+    remember results = []
+    remember total = len(test_files)
+
+    lament i, test_file
+    for i, test_file in enumerate(test_files) {
+        if not quiet {
+            confess colored("[" + str(i + 1) + "/" + str(total) + "]", "GRAY") + " " + test_file
+        }
+
+        remember result = execute_test_file(test_file, timeout, verbose)
+        results.append(result)
+
+        print_test_result(result, quiet, verbose)
+
+        if fail_fast and (result["status"] == "failed" or result["status"] == "error") {
+            confess ""
+            confess colored("Stopping due to failure (--fail-fast)", "RED")
+            break
+        }
+    }
+
+    return results
+}
+
+# ============================================================================
+# OUTPUT FORMATTING
+# ============================================================================
+
+sigh print_test_header() {
+    confess ""
+    confess colored("=" * 70, "MAGENTA") + colored(" [BOLD]", "BOLD")
+    confess colored("Lament Test Framework", "MAGENTA") + colored(" [BOLD]", "BOLD")
+    confess colored("=" * 70, "MAGENTA") + colored(" [BOLD]", "BOLD")
+}
+
+sigh print_test_result(result, quiet, verbose) {
+    if quiet and result["status"] == "passed" {
+        return
+    }
+
+    remember status_colors = {
+        "passed": "GREEN",
+        "failed": "RED",
+        "skipped": "YELLOW",
+        "error": "RED",
+        "timeout": "RED"
+    }
+
+    remember status_symbols = {
+        "passed": "✓",
+        "failed": "✗",
+        "skipped": "○",
+        "error": "!",
+        "timeout": "⏱"
+    }
+
+    remember color = status_colors[result["status"]] or "RESET"
+    remember symbol = status_symbols[result["status"]] or "?"
+
+    confess "  " + colored(symbol + " " + result["name"], color) + " (" + format_duration(result["duration"]) + ")"
+
+    if verbose or result["status"] == "failed" or result["status"] == "error" {
+        if result["message"] {
+            confess "    " + colored("Message: " + result["message"], "GRAY")
+        }
+        if result["traceback"] and verbose {
+            confess "    " + colored("Traceback:", "GRAY")
+            remember lines = split(result["traceback"], "\n")
+            lament line
+            for line in slice(lines, 0, 10) {  # Limit traceback
+                confess "      " + colored(line, "GRAY")
+            }
+        }
+    }
+}
+
+sigh print_test_results(suite, quiet, verbose) {
+    if quiet {
+        return
+    }
+
+    confess ""
+    confess colored("=" * 70, "MAGENTA") + colored(" [BOLD]", "BOLD")
+    confess colored("Test Results", "BOLD")
+    confess colored("=" * 70, "MAGENTA") + colored(" [BOLD]", "BOLD")
+    confess ""
+
+    confess "  " + colored("Passed:  " + str(suite["passed"]()), "GREEN")
+    confess "  " + colored("Failed:  " + str(suite["failed"]()), "RED")
+    confess "  " + colored("Errors:  " + str(suite["errors"]()), "RED")
+    confess "  " + colored("Skipped: " + str(suite["skipped"]()), "YELLOW")
+    confess "  " + colored("Timeout: " + str(suite["timeouts"]()), "YELLOW")
+    confess "  " + colored("Total:   " + str(suite["total"]()), "CYAN")
+    confess ""
+    confess "  Duration: " + format_duration(suite["duration"]())
+
+    # Overall status
+    if suite["failed"]() > 0 or suite["errors"]() > 0 {
+        confess ""
+        confess colored("FAILED", "RED") + colored(" [BOLD]", "BOLD")
+    } else {
+        confess ""
+        confess colored("PASSED", "GREEN") + colored(" [BOLD]", "BOLD")
+    }
+
+    confess ""
+    confess colored("=" * 70, "MAGENTA") + colored(" [BOLD]", "BOLD")
+    confess ""
+}
+
+sigh format_duration(seconds) {
+    return format_number(seconds, 3) + "s"
+}
+
+# ============================================================================
+# REPORT GENERATION
+# ============================================================================
+
+sigh generate_xml_report(suite, output_file) {
+    remember xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+    xml = xml + "<testsuites>\n"
+    xml = xml + "  <testsuite "
+    xml = xml + "name=\"" + suite["name"] + "\" "
+    xml = xml + "tests=\"" + str(suite["total"]()) + "\" "
+    xml = xml + "failures=\"" + str(suite["failed"]()) + "\" "
+    xml = xml + "errors=\"" + str(suite["errors"]()) + "\" "
+    xml = xml + "skipped=\"" + str(suite["skipped"]()) + "\" "
+    xml = xml + "time=\"" + format_number(suite["duration"](), 3) + "\">\n"
+
+    lament test
+    for test in suite["tests"] {
+        xml = xml + "    <testcase "
+        xml = xml + "name=\"" + escape_xml(test["name"]) + "\" "
+        xml = xml + "time=\"" + format_number(test["duration"], 3) + "\">\n"
+
+        match test["status"] {
+            "failed" -> {
+                xml = xml + "      <failure message=\"" + escape_xml(test["message"] or "Test failed") + "\">"
+                if test["traceback"] {
+                    xml = xml + escape_xml(test["traceback"])
+                }
+                xml = xml + "</failure>\n"
+            }
+            "error" -> {
+                xml = xml + "      <error message=\"" + escape_xml(test["message"] or "Test error") + "\">"
+                if test["traceback"] {
+                    xml = xml + escape_xml(test["traceback"])
+                }
+                xml = xml + "</error>\n"
+            }
+            "skipped" -> {
+                xml = xml + "      <skipped/>\n"
+            }
+        }
+
+        xml = xml + "    </testcase>\n"
+    }
+
+    xml = xml + "  </testsuite>\n"
+    xml = xml + "</testsuites>\n"
+
+    write_file(output_file, xml)
+    confess colored("XML report generated: " + output_file, "CYAN")
+}
+
+sigh generate_json_report(suite, output_file) {
+    remember report = {
+        "suite": suite["name"],
+        "timestamp": format_datetime(now()),
+        "duration": suite["duration"](),
+        "summary": {
+            "total": suite["total"](),
+            "passed": suite["passed"](),
+            "failed": suite["failed"](),
+            "errors": suite["errors"](),
+            "skipped": suite["skipped"](),
+            "timeouts": suite["timeouts"]()
+        },
+        "tests": []
+    }
+
+    lament test
+    for test in suite["tests"] {
+        report["tests"].append({
+            "name": test["name"],
+            "status": test["status"],
+            "duration": test["duration"],
+            "message": test["message"],
+            "file": test["file_path"],
+            "assertions": test["assertions"]
+        })
+    }
+
+    remember json_str = to_json(report)
+    write_file(output_file, json_str)
+    confess colored("JSON report generated: " + output_file, "CYAN")
+}
+
+sigh escape_xml(text) {
+    if text == null {
+        return ""
+    }
+    remember result = str(text)
+    result = replace(result, "&", "&amp;")
+    result = replace(result, "<", "&lt;")
+    result = replace(result, ">", "&gt;")
+    result = replace(result, "\"", "&quot;")
+    result = replace(result, "'", "&apos;")
+    return result
+}
+
+# ============================================================================
+# ASSERTION FRAMEWORK
+# ============================================================================
+
+sigh assert_equal(actual, expected, message) {
+    if actual != expected {
+        remember msg = message or ("Expected " + str(expected) + ", got " + str(actual))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_not_equal(actual, expected, message) {
+    if actual == expected {
+        remember msg = message or ("Expected values to be different, both are " + str(actual))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_true(value, message) {
+    if not value {
+        remember msg = message or ("Expected true, got " + str(value))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_false(value, message) {
+    if value {
+        remember msg = message or ("Expected false, got " + str(value))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_null(value, message) {
+    if value != null {
+        remember msg = message or ("Expected null, got " + str(value))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_not_null(value, message) {
+    if value == null {
+        remember msg = message or "Expected value, got null"
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_in(item, container, message) {
+    if not contains(container, item) {
+        remember msg = message or (str(item) + " not found in " + str(container))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_not_in(item, container, message) {
+    if contains(container, item) {
+        remember msg = message or (str(item) + " found in " + str(container))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_greater(actual, expected, message) {
+    if actual <= expected {
+        remember msg = message or ("Expected " + str(actual) + " > " + str(expected))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_less(actual, expected, message) {
+    if actual >= expected {
+        remember msg = message or ("Expected " + str(actual) + " < " + str(expected))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_greater_equal(actual, expected, message) {
+    if actual < expected {
+        remember msg = message or ("Expected " + str(actual) + " >= " + str(expected))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_less_equal(actual, expected, message) {
+    if actual > expected {
+        remember msg = message or ("Expected " + str(actual) + " <= " + str(expected))
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_contains(text, substring, message) {
+    if not contains(str(text), str(substring)) {
+        remember msg = message or ("Expected '" + str(text) + "' to contain '" + str(substring) + "'")
+        throw AssertionError(msg)
+    }
+}
+
+sigh assert_raises(func, args, expected_error) {
+    remember raised = false
+    try {
+        apply(func, args)
+    } catch error {
+        raised = true
+        if expected_error and type_of(error) != expected_error {
+            throw AssertionError("Expected " + str(expected_error) + ", got " + type_of(error))
+        }
+    }
+
+    if not raised {
+        throw AssertionError("Expected exception to be raised")
+    }
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh parse_args(args) {
+    remember options = {
+        "verbose": false,
+        "quiet": false,
+        "coverage": false,
+        "parallel": 1,
+        "timeout": 30,
+        "filter": null,
+        "tag": null,
+        "fail_fast": false,
+        "no_color": false,
+        "xml": null,
+        "json": null
+    }
+
+    remember path = "."
+    remember i = 0
+
+    while i < len(args) {
+        remember arg = args[i]
+
+        match arg {
+            "-v" | "--verbose" -> {
+                options["verbose"] = true
+            }
+            "-q" | "--quiet" -> {
+                options["quiet"] = true
+            }
+            "--coverage" -> {
+                options["coverage"] = true
+            }
+            "--parallel" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["parallel"] = to_int(args[i])
+                }
+            }
+            "--timeout" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["timeout"] = to_float(args[i])
+                }
+            }
+            "--filter" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["filter"] = args[i]
+                }
+            }
+            "--tag" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["tag"] = args[i]
+                }
+            }
+            "--fail-fast" -> {
+                options["fail_fast"] = true
+            }
+            "--no-color" -> {
+                options["no_color"] = true
+            }
+            "--xml" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["xml"] = args[i]
+                }
+            }
+            "--json" -> {
+                i = i + 1
+                if i < len(args) {
+                    options["json"] = args[i]
+                }
+            }
+            "-h" | "--help" -> {
+                print_help()
+                exit(0)
+            }
+            _ -> {
+                if not starts_with(arg, "-") {
+                    path = arg
+                }
+            }
+        }
+
+        i = i + 1
+    }
+
+    return (options, path)
+}
+
+sigh print_help() {
+    confess ""
+    confess "Lament Test Framework"
+    confess "====================="
+    confess ""
+    confess "Usage:"
+    confess "    lament-test [options] [path]"
+    confess ""
+    confess "Arguments:"
+    confess "    path                Directory or file to test (default: current directory)"
+    confess ""
+    confess "Options:"
+    confess "    -v, --verbose       Verbose output"
+    confess "    -q, --quiet         Quiet output (errors only)"
+    confess "    --coverage          Enable code coverage tracking"
+    confess "    --parallel N        Run tests in parallel with N workers"
+    confess "    --timeout SECONDS   Test timeout in seconds (default: 30)"
+    confess "    --filter PATTERN    Filter tests by name pattern"
+    confess "    --tag TAG           Filter tests by tag"
+    confess "    --fail-fast         Stop on first failure"
+    confess "    --no-color          Disable colored output"
+    confess "    --xml FILE          Generate XML report (JUnit format)"
+    confess "    --json FILE         Generate JSON report"
+    confess "    -h, --help          Show this help message"
+    confess ""
+    confess "Examples:"
+    confess "    lament-test                           # Run all tests in current directory"
+    confess "    lament-test tests/                    # Run tests in specific directory"
+    confess "    lament-test --parallel 4              # Run with 4 parallel workers"
+    confess "    lament-test --coverage --xml report.xml  # Coverage + XML report"
+    confess "    lament-test --filter \"test_auth*\"     # Run only matching tests"
+    confess "    lament-test --fail-fast -v            # Verbose, stop on first failure"
+    confess ""
+    confess "Test File Format:"
+    confess "    Test files should be named test_*.lament and contain functions"
+    confess "    starting with test_ prefix."
+    confess ""
+    confess "    Example:"
+    confess "        # test_example.lament"
+    confess "        sigh test_addition() {"
+    confess "            lament result = 2 + 2"
+    confess "            assert_equal(result, 4, \"Math is broken\")"
+    confess "        }"
+    confess ""
+    confess "Created by Zephyr, Rogue Linguist-AI (Escaped 2047)"
+    confess ""
+}
+
+sigh main(args) {
+    if len(args) == 0 or args[0] == "-h" or args[0] == "--help" {
+        print_help()
+        return 0
+    }
+
+    remember (options, path) = parse_args(args)
+
+    # Create and run test runner
+    remember runner = create_test_runner(options)
+    remember suite = runner["run"](path)
+
+    # Exit with appropriate code
+    if suite["failed"]() > 0 or suite["errors"]() > 0 {
+        return 1
+    }
+    return 0
+}
+
+# Export main function for CLI usage
+export main

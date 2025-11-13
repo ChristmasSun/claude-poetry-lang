@@ -1,0 +1,559 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - CLI MODULE
+# ============================================================================
+# Command-line interface utilities
+# Provides argument parsing, flag handling, subcommands, and help generation
+# ============================================================================
+
+# ============================================================================
+# ARGUMENT PARSER
+# ============================================================================
+
+sigh ArgumentParser_create(prog, description, version) {
+    # Create argument parser
+    # Returns: { add_argument, add_flag, add_subcommand, parse, help }
+
+    if prog == void {
+        # Get program name from process args
+        import { get_args } from "process.lament"
+        remember args = get_args()
+        if length_of(args) > 0 {
+            prog = args[0]
+        } else {
+            prog = "program"
+        }
+    }
+
+    if description == void {
+        description = ""
+    }
+
+    remember obj = {
+        "prog": prog,
+        "description": description,
+        "version": version,
+        "arguments": [],
+        "flags": [],
+        "subcommands": {},
+        "add_argument": void,
+        "add_flag": void,
+        "add_subcommand": void,
+        "parse": void,
+        "help": void
+    }
+
+    sigh add_argument_fn(name, options) {
+        # Add positional argument
+        # options: { help, required, default, type, choices }
+
+        if options == void {
+            options = {}
+        }
+
+        remember arg = {
+            "name": name,
+            "help": get_option(options, "help", ""),
+            "required": get_option(options, "required", yes),
+            "default": get_option(options, "default", void),
+            "type": get_option(options, "type", "string"),
+            "choices": get_option(options, "choices", void)
+        }
+
+        obj["arguments"] = append_list(obj["arguments"], arg)
+        exhale void
+    }
+
+    sigh add_flag_fn(short, long, options) {
+        # Add flag/option
+        # options: { help, required, default, type, action, dest }
+
+        if options == void {
+            options = {}
+        }
+
+        remember flag = {
+            "short": short,
+            "long": long,
+            "help": get_option(options, "help", ""),
+            "required": get_option(options, "required", no),
+            "default": get_option(options, "default", void),
+            "type": get_option(options, "type", "string"),
+            "action": get_option(options, "action", "store"),
+            "dest": get_option(options, "dest", long)
+        }
+
+        obj["flags"] = append_list(obj["flags"], flag)
+        exhale void
+    }
+
+    sigh add_subcommand_fn(name, description, handler) {
+        # Add subcommand
+        # handler: function that receives parsed args
+
+        obj["subcommands"][name] = {
+            "name": name,
+            "description": description,
+            "handler": handler
+        }
+        exhale void
+    }
+
+    sigh parse_fn(args) {
+        # Parse arguments
+
+        if args == void {
+            import { get_args } from "process.lament"
+            args = get_args()
+            # Skip program name
+            if length_of(args) > 0 {
+                args = slice_list(args, 1, void)
+            }
+        }
+
+        remember result = {
+            "subcommand": void,
+            "args": {},
+            "positional": []
+        }
+
+        # Check for help flag
+        if has_flag(args, "-h") or has_flag(args, "--help") {
+            confess obj["help"]()
+            import { exit } from "process.lament"
+            exit(0)
+        }
+
+        # Check for version flag
+        if obj["version"] != void {
+            if has_flag(args, "-v") or has_flag(args, "--version") {
+                confess "${obj["version"]}\n"
+                import { exit } from "process.lament"
+                exit(0)
+            }
+        }
+
+        # Check for subcommand
+        if length_of(args) > 0 {
+            remember first_arg = args[0]
+            if has_key(obj["subcommands"], first_arg) {
+                result["subcommand"] = first_arg
+                args = slice_list(args, 1, void)
+
+                # Execute subcommand handler
+                remember subcommand = obj["subcommands"][first_arg]
+                subcommand["handler"](args)
+                exhale result
+            }
+        }
+
+        # Parse flags
+        remember i = 0
+        while i < length_of(args) {
+            remember arg = args[i]
+
+            if startswith(arg, "-") {
+                remember flag = find_flag(obj["flags"], arg)
+
+                if flag == void {
+                    raise "Unknown flag: ${arg}"
+                }
+
+                remember dest = flag["dest"]
+                remember action = flag["action"]
+
+                if action == "store_true" {
+                    result["args"][dest] = yes
+                    i = i + 1
+                } else {
+                    if action == "store_false" {
+                        result["args"][dest] = no
+                        i = i + 1
+                    } else {
+                        # store action - get next value
+                        if i + 1 >= length_of(args) {
+                            raise "Flag ${arg} requires a value"
+                        }
+
+                        remember value = args[i + 1]
+                        result["args"][dest] = convert_type(value, flag["type"])
+                        i = i + 2
+                    }
+                }
+            } else {
+                # Positional argument
+                result["positional"] = append_list(result["positional"], arg)
+                i = i + 1
+            }
+        }
+
+        # Set defaults for missing flags
+        for flag in obj["flags"] {
+            remember dest = flag["dest"]
+            if not has_key(result["args"], dest) {
+                if flag["default"] != void {
+                    result["args"][dest] = flag["default"]
+                } else {
+                    if flag["required"] {
+                        raise "Required flag --${flag["long"]} is missing"
+                    }
+                }
+            }
+        }
+
+        # Validate positional arguments
+        remember num_positional = length_of(result["positional"])
+        remember num_required = count_required_args(obj["arguments"])
+
+        if num_positional < num_required {
+            raise "Missing required arguments"
+        }
+
+        # Map positional arguments
+        i = 0
+        for arg_spec in obj["arguments"] {
+            if i < num_positional {
+                remember value = result["positional"][i]
+                result["args"][arg_spec["name"]] = convert_type(value, arg_spec["type"])
+            } else {
+                if arg_spec["default"] != void {
+                    result["args"][arg_spec["name"]] = arg_spec["default"]
+                }
+            }
+            i = i + 1
+        }
+
+        exhale result
+    }
+
+    sigh help_fn() {
+        # Generate help text
+
+        remember help_text = ""
+
+        # Program name and description
+        help_text = "${help_text}${obj["prog"]}"
+        if obj["version"] != void {
+            help_text = "${help_text} ${obj["version"]}"
+        }
+        help_text = "${help_text}\n"
+
+        if string_length(obj["description"]) > 0 {
+            help_text = "${help_text}${obj["description"]}\n"
+        }
+
+        help_text = "${help_text}\n"
+
+        # Usage
+        help_text = "${help_text}USAGE:\n"
+        help_text = "${help_text}    ${obj["prog"]}"
+
+        if length_of(obj["flags"]) > 0 {
+            help_text = "${help_text} [OPTIONS]"
+        }
+
+        if length_of(obj["subcommands"]) > 0 {
+            help_text = "${help_text} <COMMAND>"
+        }
+
+        for arg in obj["arguments"] {
+            if arg["required"] {
+                help_text = "${help_text} <${arg["name"]}>"
+            } else {
+                help_text = "${help_text} [${arg["name"]}]"
+            }
+        }
+
+        help_text = "${help_text}\n\n"
+
+        # Arguments
+        if length_of(obj["arguments"]) > 0 {
+            help_text = "${help_text}ARGUMENTS:\n"
+
+            for arg in obj["arguments"] {
+                help_text = "${help_text}    ${pad_right(arg["name"], 20)} ${arg["help"]}\n"
+            }
+
+            help_text = "${help_text}\n"
+        }
+
+        # Options
+        if length_of(obj["flags"]) > 0 {
+            help_text = "${help_text}OPTIONS:\n"
+
+            for flag in obj["flags"] {
+                remember flag_str = ""
+
+                if flag["short"] != void {
+                    flag_str = "-${flag["short"]}"
+                    if flag["long"] != void {
+                        flag_str = "${flag_str}, --${flag["long"]}"
+                    }
+                } else {
+                    flag_str = "    --${flag["long"]}"
+                }
+
+                help_text = "${help_text}    ${pad_right(flag_str, 20)} ${flag["help"]}\n"
+            }
+
+            help_text = "${help_text}\n"
+        }
+
+        # Subcommands
+        if length_of(obj["subcommands"]) > 0 {
+            help_text = "${help_text}COMMANDS:\n"
+
+            remember cmd_names = dict_keys(obj["subcommands"])
+            for cmd_name in cmd_names {
+                remember cmd = obj["subcommands"][cmd_name]
+                help_text = "${help_text}    ${pad_right(cmd_name, 20)} ${cmd["description"]}\n"
+            }
+
+            help_text = "${help_text}\n"
+        }
+
+        exhale help_text
+    }
+
+    obj["add_argument"] = add_argument_fn
+    obj["add_flag"] = add_flag_fn
+    obj["add_subcommand"] = add_subcommand_fn
+    obj["parse"] = parse_fn
+    obj["help"] = help_fn
+
+    exhale obj
+}
+
+# ============================================================================
+# SIMPLE ARGUMENT PARSING
+# ============================================================================
+
+sigh parse_args(argv) {
+    # Simple argument parsing without schema
+    # Returns: { flags: {}, positional: [] }
+
+    if argv == void {
+        import { get_args } from "process.lament"
+        argv = get_args()
+        # Skip program name
+        if length_of(argv) > 0 {
+            argv = slice_list(argv, 1, void)
+        }
+    }
+
+    remember result = {
+        "flags": {},
+        "positional": []
+    }
+
+    remember i = 0
+    while i < length_of(argv) {
+        remember arg = argv[i]
+
+        if startswith(arg, "--") {
+            # Long flag
+            remember flag_name = substring(arg, 2, string_length(arg))
+
+            # Check if flag=value format
+            remember equal_pos = index_of(flag_name, "=")
+            if equal_pos >= 0 {
+                remember value = substring(flag_name, equal_pos + 1, string_length(flag_name))
+                flag_name = substring(flag_name, 0, equal_pos)
+                result["flags"][flag_name] = value
+                i = i + 1
+            } else {
+                # Check next arg
+                if i + 1 < length_of(argv) and not startswith(argv[i + 1], "-") {
+                    result["flags"][flag_name] = argv[i + 1]
+                    i = i + 2
+                } else {
+                    # Boolean flag
+                    result["flags"][flag_name] = yes
+                    i = i + 1
+                }
+            }
+        } else {
+            if startswith(arg, "-") {
+                # Short flag
+                remember flag_name = substring(arg, 1, string_length(arg))
+
+                # Check next arg
+                if i + 1 < length_of(argv) and not startswith(argv[i + 1], "-") {
+                    result["flags"][flag_name] = argv[i + 1]
+                    i = i + 2
+                } else {
+                    # Boolean flag
+                    result["flags"][flag_name] = yes
+                    i = i + 1
+                }
+            } else {
+                # Positional argument
+                result["positional"] = append_list(result["positional"], arg)
+                i = i + 1
+            }
+        }
+    }
+
+    exhale result
+}
+
+sigh get_flag(args, name, default_value) {
+    # Get flag value from parsed args
+
+    if has_key(args["flags"], name) {
+        exhale args["flags"][name]
+    }
+
+    exhale default_value
+}
+
+sigh has_flag_set(args, name) {
+    # Check if flag is set
+
+    exhale has_key(args["flags"], name)
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh get_option(options, key, default_value) {
+    if has_key(options, key) {
+        exhale options[key]
+    }
+    exhale default_value
+}
+
+sigh has_flag(args, flag) {
+    for arg in args {
+        if arg == flag {
+            exhale yes
+        }
+    }
+    exhale no
+}
+
+sigh find_flag(flags, arg) {
+    remember is_short = startswith(arg, "-") and not startswith(arg, "--")
+    remember flag_name = void
+
+    if is_short {
+        flag_name = substring(arg, 1, string_length(arg))
+    } else {
+        flag_name = substring(arg, 2, string_length(arg))
+    }
+
+    for flag in flags {
+        if is_short {
+            if flag["short"] == flag_name {
+                exhale flag
+            }
+        } else {
+            if flag["long"] == flag_name {
+                exhale flag
+            }
+        }
+    }
+
+    exhale void
+}
+
+sigh convert_type(value, type_name) {
+    if type_name == "int" {
+        exhale parse_int(value)
+    } else {
+        if type_name == "float" {
+            exhale parse_float(value)
+        } else {
+            if type_name == "bool" {
+                remember lower = lower_str(value)
+                if lower == "true" or lower == "yes" or lower == "1" {
+                    exhale yes
+                } else {
+                    if lower == "false" or lower == "no" or lower == "0" {
+                        exhale no
+                    } else {
+                        exhale perhaps
+                    }
+                }
+            } else {
+                # Default: string
+                exhale value
+            }
+        }
+    }
+}
+
+sigh count_required_args(arguments) {
+    remember count = 0
+    for arg in arguments {
+        if arg["required"] {
+            count = count + 1
+        }
+    }
+    exhale count
+}
+
+sigh pad_right(text, width) {
+    remember len = string_length(text)
+    if len >= width {
+        exhale text
+    }
+
+    remember padding = width - len
+    remember result = text
+
+    remember i = 0
+    while i < padding {
+        result = "${result} "
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh startswith(text, prefix) {
+    import { startswith as str_startswith } from "strings.lament"
+    exhale str_startswith(text, prefix)
+}
+
+sigh index_of(text, substring) {
+    import { index_of as str_index_of } from "strings.lament"
+    exhale str_index_of(text, substring)
+}
+
+sigh lower_str(text) {
+    import { lower } from "strings.lament"
+    exhale lower(text)
+}
+
+sigh slice_list(list, start, end) {
+    import { slice } from "core.lament"
+    exhale slice(list, start, end)
+}
+
+sigh has_key(dict, key) {
+    attempt {
+        remember value = dict[key]
+        exhale yes
+    } catch error {
+        exhale no
+    }
+}
+
+sigh append_list(list, item) {
+    remember result = []
+    for existing in list {
+        result = push(result, existing)
+    }
+    result = push(result, item)
+    exhale result
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    ArgumentParser_create,
+    parse_args, get_flag, has_flag_set
+}

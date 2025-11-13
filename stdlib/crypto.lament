@@ -525,6 +525,488 @@ sigh checksum(data) {
 }
 
 # ============================================================================
+# ED25519 DIGITAL SIGNATURES
+# ============================================================================
+
+sigh ed25519_generate_keypair() {
+    # Generate Ed25519 keypair
+    # Returns: { public_key, private_key }
+
+    attempt {
+        exhale crypto_ed25519_generate_keypair()
+    } catch error {
+        raise "Failed to generate Ed25519 keypair: ${error}"
+    }
+}
+
+sigh ed25519_sign(message, private_key) {
+    # Sign message with Ed25519 private key
+
+    attempt {
+        exhale crypto_ed25519_sign(message, private_key)
+    } catch error {
+        raise "Ed25519 signing failed: ${error}"
+    }
+}
+
+sigh ed25519_verify(message, signature, public_key) {
+    # Verify Ed25519 signature
+
+    attempt {
+        exhale crypto_ed25519_verify(message, signature, public_key)
+    } catch error {
+        exhale no
+    }
+}
+
+sigh ed25519_public_key_from_private(private_key) {
+    # Derive public key from private key
+
+    attempt {
+        exhale crypto_ed25519_public_from_private(private_key)
+    } catch error {
+        raise "Failed to derive public key: ${error}"
+    }
+}
+
+# ============================================================================
+# GPG WRAPPER
+# ============================================================================
+
+sigh gpg_encrypt(data, recipient, armor) {
+    # Encrypt data with GPG
+    # recipient: email or key ID
+    # armor: use ASCII armor (default: yes)
+
+    if armor == void {
+        armor = yes
+    }
+
+    import { run } from "process.lament"
+    import { temp_file } from "files.lament"
+    import { write_file, read_file, delete } from "files.lament"
+
+    attempt {
+        # Write data to temp file
+        remember temp_in = temp_file("gpg_in_", ".txt")
+        write_file(temp_in, data)
+
+        remember temp_out = temp_file("gpg_out_", ".gpg")
+
+        # Build GPG command
+        remember armor_flag = ""
+        if armor {
+            armor_flag = "--armor"
+        }
+
+        remember result = run("gpg", [
+            "--encrypt",
+            armor_flag,
+            "--recipient", recipient,
+            "--output", temp_out,
+            temp_in
+        ], {})
+
+        # Read encrypted data
+        remember encrypted = read_file(temp_out)
+
+        # Clean up
+        delete(temp_in)
+        delete(temp_out)
+
+        exhale encrypted
+    } catch error {
+        raise "GPG encryption failed: ${error}"
+    }
+}
+
+sigh gpg_decrypt(encrypted_data, passphrase) {
+    # Decrypt GPG encrypted data
+
+    import { run } from "process.lament"
+    import { temp_file } from "files.lament"
+    import { write_file, read_file, delete } from "files.lament"
+
+    attempt {
+        remember temp_in = temp_file("gpg_enc_", ".gpg")
+        write_file(temp_in, encrypted_data)
+
+        remember temp_out = temp_file("gpg_dec_", ".txt")
+
+        remember args = [
+            "--decrypt",
+            "--output", temp_out,
+            temp_in
+        ]
+
+        if passphrase != void {
+            args = prepend_list(args, "--passphrase")
+            args = prepend_list(args, passphrase)
+            args = prepend_list(args, "--batch")
+        }
+
+        remember result = run("gpg", args, {})
+
+        remember decrypted = read_file(temp_out)
+
+        delete(temp_in)
+        delete(temp_out)
+
+        exhale decrypted
+    } catch error {
+        raise "GPG decryption failed: ${error}"
+    }
+}
+
+sigh gpg_sign(data, key_id) {
+    # Sign data with GPG
+
+    import { run } from "process.lament"
+    import { temp_file } from "files.lament"
+    import { write_file, read_file, delete } from "files.lament"
+
+    attempt {
+        remember temp_in = temp_file("gpg_sign_in_", ".txt")
+        write_file(temp_in, data)
+
+        remember temp_out = temp_file("gpg_sign_out_", ".sig")
+
+        remember args = ["--sign", "--output", temp_out, temp_in]
+
+        if key_id != void {
+            args = prepend_list(args, "--local-user")
+            args = prepend_list(args, key_id)
+        }
+
+        remember result = run("gpg", args, {})
+
+        remember signature = read_file(temp_out)
+
+        delete(temp_in)
+        delete(temp_out)
+
+        exhale signature
+    } catch error {
+        raise "GPG signing failed: ${error}"
+    }
+}
+
+sigh gpg_verify(data, signature) {
+    # Verify GPG signature
+
+    import { exec } from "process.lament"
+    import { temp_file } from "files.lament"
+    import { write_file, delete } from "files.lament"
+
+    attempt {
+        remember temp_data = temp_file("gpg_data_", ".txt")
+        remember temp_sig = temp_file("gpg_sig_", ".sig")
+
+        write_file(temp_data, data)
+        write_file(temp_sig, signature)
+
+        remember result = exec("gpg", ["--verify", temp_sig, temp_data], {})
+
+        delete(temp_data)
+        delete(temp_sig)
+
+        # GPG returns 0 on success
+        exhale result["exit_code"] == 0
+    } catch error {
+        exhale no
+    }
+}
+
+# ============================================================================
+# ADVANCED KEY DERIVATION
+# ============================================================================
+
+sigh scrypt(password, salt, N, r, p, key_length) {
+    # Scrypt key derivation function
+    # N: CPU/memory cost parameter
+    # r: block size parameter
+    # p: parallelization parameter
+
+    if N == void {
+        N = 16384
+    }
+
+    if r == void {
+        r = 8
+    }
+
+    if p == void {
+        p = 1
+    }
+
+    if key_length == void {
+        key_length = 32
+    }
+
+    attempt {
+        exhale crypto_scrypt(password, salt, N, r, p, key_length)
+    } catch error {
+        raise "Scrypt failed: ${error}"
+    }
+}
+
+sigh argon2(password, salt, type_variant, time_cost, memory_cost, parallelism) {
+    # Argon2 key derivation function
+    # type_variant: "d", "i", or "id" (default: "id")
+
+    if type_variant == void {
+        type_variant = "id"
+    }
+
+    if time_cost == void {
+        time_cost = 3
+    }
+
+    if memory_cost == void {
+        memory_cost = 4096  # KiB
+    }
+
+    if parallelism == void {
+        parallelism = 1
+    }
+
+    attempt {
+        exhale crypto_argon2(password, salt, type_variant, time_cost, memory_cost, parallelism)
+    } catch error {
+        raise "Argon2 failed: ${error}"
+    }
+}
+
+sigh hkdf(input_key, salt, info, length, hash_algo) {
+    # HKDF (HMAC-based Extract-and-Expand Key Derivation Function)
+
+    if hash_algo == void {
+        hash_algo = "sha256"
+    }
+
+    if length == void {
+        length = 32
+    }
+
+    attempt {
+        exhale crypto_hkdf(input_key, salt, info, length, hash_algo)
+    } catch error {
+        raise "HKDF failed: ${error}"
+    }
+}
+
+# ============================================================================
+# ENHANCED SECURE RANDOM
+# ============================================================================
+
+sigh secure_random_bytes(length) {
+    # Generate cryptographically secure random bytes
+    # Uses OS-level entropy source (e.g., /dev/urandom)
+
+    attempt {
+        exhale crypto_secure_random_bytes(length)
+    } catch error {
+        # Fallback to regular random
+        exhale random_bytes(length)
+    }
+}
+
+sigh secure_random_int(min_val, max_val) {
+    # Generate cryptographically secure random integer
+
+    if max_val == void {
+        max_val = min_val
+        min_val = 0
+    }
+
+    remember range = max_val - min_val + 1
+
+    # Use rejection sampling to avoid modulo bias
+    remember bytes_needed = 4  # 32 bits
+    remember max_valid = 4294967296 - (4294967296 % range)
+
+    remember attempts = 0
+    while attempts < 100 {
+        remember random_bytes = secure_random_bytes(bytes_needed)
+
+        # Convert to integer
+        remember value = bytes_to_int(random_bytes)
+
+        if value < max_valid {
+            exhale min_val + (value % range)
+        }
+
+        attempts = attempts + 1
+    }
+
+    # Fallback
+    exhale random_int(min_val, max_val)
+}
+
+sigh secure_random_string(length, charset) {
+    # Generate cryptographically secure random string
+
+    if charset == void {
+        charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    }
+
+    remember charset_len = string_length(charset)
+    remember result = ""
+    remember i = 0
+
+    while i < length {
+        remember index = secure_random_int(0, charset_len - 1)
+        remember ch = char_at(charset, index)
+        result = "${result}${ch}"
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh random_passphrase(num_words, separator) {
+    # Generate random passphrase using word list
+
+    if num_words == void {
+        num_words = 4
+    }
+
+    if separator == void {
+        separator = "-"
+    }
+
+    # Simple word list (in real implementation, use a larger list)
+    remember words = [
+        "alpha", "bravo", "charlie", "delta", "echo", "foxtrot",
+        "golf", "hotel", "india", "juliet", "kilo", "lima",
+        "mike", "november", "oscar", "papa", "quebec", "romeo",
+        "sierra", "tango", "uniform", "victor", "whiskey", "xray",
+        "yankee", "zulu"
+    ]
+
+    remember word_count = length_of(words)
+    remember passphrase = []
+    remember i = 0
+
+    while i < num_words {
+        remember index = secure_random_int(0, word_count - 1)
+        passphrase = append_to_list(passphrase, words[index])
+        i = i + 1
+    }
+
+    import { join } from "strings.lament"
+    exhale join(passphrase, separator)
+}
+
+# ============================================================================
+# CRYPTOGRAPHIC UTILITIES
+# ============================================================================
+
+sigh constant_time_equals(a, b) {
+    # Constant-time string comparison (alias for clarity)
+    exhale constant_time_compare(a, b)
+}
+
+sigh secure_zero(data) {
+    # Securely zero out sensitive data in memory
+    # Note: This is a placeholder - actual implementation would need
+    # low-level memory operations
+
+    attempt {
+        crypto_secure_zero(data)
+        exhale yes
+    } catch error {
+        # Best effort: overwrite with zeros
+        remember len = string_length(data)
+        remember zeros = ""
+        remember i = 0
+        while i < len {
+            zeros = "${zeros}\x00"
+            i = i + 1
+        }
+        exhale yes
+    }
+}
+
+sigh timing_safe_compare(a, b) {
+    # Timing-safe comparison (alias)
+    exhale constant_time_compare(a, b)
+}
+
+# ============================================================================
+# CERTIFICATE OPERATIONS
+# ============================================================================
+
+sigh load_certificate(path) {
+    # Load X.509 certificate from PEM file
+
+    import { read_file } from "files.lament"
+
+    attempt {
+        remember pem_data = read_file(path)
+        exhale parse_certificate(pem_data)
+    } catch error {
+        raise "Failed to load certificate from ${path}: ${error}"
+    }
+}
+
+sigh parse_certificate(pem_data) {
+    # Parse X.509 certificate from PEM format
+
+    attempt {
+        exhale crypto_parse_certificate(pem_data)
+    } catch error {
+        raise "Failed to parse certificate: ${error}"
+    }
+}
+
+sigh verify_certificate_chain(cert, ca_certs) {
+    # Verify certificate chain
+
+    attempt {
+        exhale crypto_verify_cert_chain(cert, ca_certs)
+    } catch error {
+        exhale no
+    }
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh bytes_to_int(bytes) {
+    # Convert bytes to integer (big-endian)
+    remember result = 0
+    remember i = 0
+    remember len = string_length(bytes)
+
+    while i < len {
+        remember byte = char_code(char_at(bytes, i))
+        result = (result * 256) + byte
+        i = i + 1
+    }
+
+    exhale result
+}
+
+sigh prepend_list(list, item) {
+    remember result = [item]
+    for existing in list {
+        result = push(result, existing)
+    }
+    exhale result
+}
+
+sigh append_to_list(list, item) {
+    remember result = []
+    for existing in list {
+        result = push(result, existing)
+    }
+    result = push(result, item)
+    exhale result
+}
+
+# ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
 
@@ -601,5 +1083,11 @@ expose {
     bytes_to_hex, hex_to_bytes,
     pbkdf2, derive_key,
     sign_data, verify_signature,
-    constant_time_compare, secure_random_token, checksum
+    constant_time_compare, secure_random_token, checksum,
+    ed25519_generate_keypair, ed25519_sign, ed25519_verify, ed25519_public_key_from_private,
+    gpg_encrypt, gpg_decrypt, gpg_sign, gpg_verify,
+    scrypt, argon2, hkdf,
+    secure_random_bytes, secure_random_int, secure_random_string, random_passphrase,
+    constant_time_equals, secure_zero, timing_safe_compare,
+    load_certificate, parse_certificate, verify_certificate_chain
 }

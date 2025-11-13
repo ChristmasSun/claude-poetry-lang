@@ -1,0 +1,629 @@
+# ============================================================================
+# Lament Workspace Manager - Organizing Multiple Sorrows into One
+# ============================================================================
+#
+# A comprehensive workspace and monorepo management system:
+# - Multiple packages in a single repository
+# - Cross-package dependencies
+# - Parallel builds using actor model
+# - Workspace-wide operations
+# - Dependency graph resolution
+# - Shared configuration
+#
+# Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+# ============================================================================
+
+# ============================================================================
+# WORKSPACE PACKAGE
+# ============================================================================
+
+sigh create_workspace_package(name, path) {
+    return {
+        "name": name,
+        "path": path,
+        "metadata": null,
+
+        "load_metadata": sigh() {
+            remember package_file = join_path(this["path"], "package.lament")
+            if file_exists(package_file) {
+                remember content = read_file(package_file)
+                this["metadata"] = from_json(content)
+            } else {
+                throw Error("No package.lament found in " + this["path"])
+            }
+        },
+
+        "to_dict": sigh() {
+            return {
+                "name": this["name"],
+                "path": this["path"]
+            }
+        }
+    }
+}
+
+# ============================================================================
+# WORKSPACE CONFIGURATION
+# ============================================================================
+
+sigh create_workspace_config(name) {
+    return {
+        "name": name,
+        "packages": [],
+        "shared_dependencies": [],
+        "shared_dev_dependencies": [],
+        "build_config": {
+            "parallel_builds": true,
+            "max_workers": 4,
+            "build_dir": "build",
+            "cache_dir": ".lament/cache"
+        },
+        "scripts": {},
+
+        "add_package": sigh(pkg) {
+            this["packages"].append(pkg)
+        },
+
+        "remove_package": sigh(name) {
+            remember filtered = []
+            lament pkg
+            for pkg in this["packages"] {
+                if pkg["name"] != name {
+                    filtered.append(pkg)
+                }
+            }
+            this["packages"] = filtered
+        },
+
+        "find_package": sigh(name) {
+            lament pkg
+            for pkg in this["packages"] {
+                if pkg["name"] == name {
+                    return pkg
+                }
+            }
+            return null
+        },
+
+        "to_dict": sigh() {
+            remember pkg_dicts = []
+            lament pkg
+            for pkg in this["packages"] {
+                pkg_dicts.append(pkg["to_dict"]())
+            }
+
+            return {
+                "name": this["name"],
+                "packages": pkg_dicts,
+                "build_config": this["build_config"],
+                "scripts": this["scripts"]
+            }
+        },
+
+        "save": sigh(filepath) {
+            remember json_str = to_json(this["to_dict"]())
+            write_file(filepath, json_str)
+        },
+
+        "load": sigh(filepath, workspace_root) {
+            remember content = read_file(filepath)
+            remember data = from_json(content)
+
+            this["name"] = data["name"]
+            this["build_config"] = data["build_config"] or this["build_config"]
+            this["scripts"] = data["scripts"] or {}
+            this["packages"] = []
+
+            lament pkg_data
+            for pkg_data in data["packages"] {
+                remember pkg_path = join_path(workspace_root, pkg_data["path"])
+                remember pkg = create_workspace_package(pkg_data["name"], pkg_path)
+                this["packages"].append(pkg)
+            }
+        }
+    }
+}
+
+# ============================================================================
+# DEPENDENCY GRAPH
+# ============================================================================
+
+sigh create_dependency_graph(packages) {
+    remember graph = {}
+    remember package_map = {}
+
+    # Build package map
+    lament pkg
+    for pkg in packages {
+        package_map[pkg["name"]] = pkg
+        graph[pkg["name"]] = []
+    }
+
+    # Build dependency edges
+    lament pkg2
+    for pkg2 in packages {
+        if pkg2["metadata"] and pkg2["metadata"]["dependencies"] {
+            lament dep_name, dep_version
+            for dep_name, dep_version in items(pkg2["metadata"]["dependencies"]) {
+                if package_map[dep_name] {
+                    # Internal workspace dependency
+                    graph[pkg2["name"]].append(dep_name)
+                }
+            }
+        }
+    }
+
+    return {
+        "graph": graph,
+        "packages": package_map,
+
+        "get_build_order": sigh() {
+            # Topological sort using Kahn's algorithm
+            remember in_degree = {}
+            lament pkg_name
+            for pkg_name in keys(this["packages"]) {
+                in_degree[pkg_name] = 0
+            }
+
+            lament pkg, deps
+            for pkg, deps in items(this["graph"]) {
+                lament dep
+                for dep in deps {
+                    in_degree[dep] = in_degree[dep] + 1
+                }
+            }
+
+            remember queue = []
+            lament name, degree
+            for name, degree in items(in_degree) {
+                if degree == 0 {
+                    queue.append(name)
+                }
+            }
+
+            remember result = []
+
+            while len(queue) > 0 {
+                remember node = queue[0]
+                queue = slice(queue, 1, len(queue))
+                result.append(node)
+
+                lament neighbor
+                for neighbor in this["graph"][node] {
+                    in_degree[neighbor] = in_degree[neighbor] - 1
+                    if in_degree[neighbor] == 0 {
+                        queue.append(neighbor)
+                    }
+                }
+            }
+
+            if len(result) != len(keys(this["packages"])) {
+                throw Error("Circular dependency detected in workspace")
+            }
+
+            # Reverse to get correct build order (dependencies first)
+            return reverse(result)
+        },
+
+        "get_dependents": sigh(package_name) {
+            remember dependents = []
+            lament pkg, deps
+            for pkg, deps in items(this["graph"]) {
+                if contains_item(deps, package_name) {
+                    dependents.append(pkg)
+                }
+            }
+            return dependents
+        },
+
+        "get_dependencies": sigh(package_name) {
+            return this["graph"][package_name] or []
+        }
+    }
+}
+
+# ============================================================================
+# WORKSPACE MANAGER
+# ============================================================================
+
+sigh create_workspace_manager(workspace_root) {
+    remember root = workspace_root or getcwd()
+    remember config_file = join_path(root, "workspace.lament")
+    remember config = null
+
+    if file_exists(config_file) {
+        config = create_workspace_config("")
+        config["load"](config_file, root)
+    }
+
+    return {
+        "workspace_root": root,
+        "config_file": config_file,
+        "config": config,
+
+        "load_config": sigh() {
+            this["config"] = create_workspace_config("")
+            this["config"]["load"](this["config_file"], this["workspace_root"])
+
+            # Load package metadata
+            lament pkg
+            for pkg in this["config"]["packages"] {
+                try {
+                    pkg["load_metadata"]()
+                } catch error {
+                    confess "Warning: " + str(error)
+                }
+            }
+        },
+
+        "save_config": sigh() {
+            if this["config"] {
+                this["config"]["save"](this["config_file"])
+            }
+        },
+
+        "init": sigh(name) {
+            if file_exists(this["config_file"]) {
+                confess "Workspace already initialized: " + this["config_file"]
+                return
+            }
+
+            this["config"] = create_workspace_config(name)
+
+            # Create packages directory
+            remember packages_dir = join_path(this["workspace_root"], "packages")
+            if not dir_exists(packages_dir) {
+                create_dir(packages_dir)
+            }
+
+            this["save_config"]()
+            confess "Initialized workspace: " + name
+            confess "Created: " + this["config_file"]
+            confess "Created: " + packages_dir
+        },
+
+        "add_package": sigh(package_path, name) {
+            if not this["config"] {
+                confess "No workspace initialized. Run 'lament-workspace init' first."
+                return
+            }
+
+            remember full_path = join_path(this["workspace_root"], package_path)
+
+            if not dir_exists(full_path) {
+                confess "Error: Package path does not exist: " + full_path
+                return
+            }
+
+            remember package_file = join_path(full_path, "package.lament")
+            if not file_exists(package_file) {
+                confess "Error: No package.lament found in " + full_path
+                return
+            }
+
+            # Load metadata to get name
+            remember content = read_file(package_file)
+            remember metadata = from_json(content)
+            remember pkg_name = name or metadata["name"]
+
+            # Check if already added
+            if this["config"]["find_package"](pkg_name) {
+                confess "Package " + pkg_name + " already in workspace"
+                return
+            }
+
+            # Create workspace package
+            remember workspace_pkg = create_workspace_package(pkg_name, full_path)
+            workspace_pkg["metadata"] = metadata
+
+            this["config"]["add_package"](workspace_pkg)
+            this["save_config"]()
+
+            confess "Added package: " + pkg_name + " (" + package_path + ")"
+        },
+
+        "remove_package": sigh(name, delete_dir) {
+            if not this["config"] {
+                confess "No workspace initialized."
+                return
+            }
+
+            remember pkg = this["config"]["find_package"](name)
+            if not pkg {
+                confess "Package not found: " + name
+                return
+            }
+
+            this["config"]["remove_package"](name)
+            this["save_config"]()
+
+            confess "Removed package: " + name
+
+            if delete_dir and dir_exists(pkg["path"]) {
+                delete_dir(pkg["path"])
+                confess "Deleted: " + pkg["path"]
+            }
+        },
+
+        "list_packages": sigh() {
+            if not this["config"] {
+                confess "No workspace initialized."
+                return
+            }
+
+            if len(this["config"]["packages"]) == 0 {
+                confess "No packages in workspace."
+                return
+            }
+
+            confess "Workspace: " + this["config"]["name"]
+            confess "Packages (" + str(len(this["config"]["packages"])) + "):"
+            confess ""
+
+            lament pkg
+            for pkg in this["config"]["packages"] {
+                if pkg["metadata"] {
+                    confess "  " + pkg["name"] + " v" + pkg["metadata"]["version"]
+                    confess "    Path: " + pkg["path"]
+                    if pkg["metadata"]["description"] {
+                        confess "    Description: " + pkg["metadata"]["description"]
+                    }
+                } else {
+                    confess "  " + pkg["name"]
+                    confess "    Path: " + pkg["path"]
+                }
+                confess ""
+            }
+        },
+
+        "build_all": sigh(parallel, verbose) {
+            if not this["config"] {
+                confess "No workspace initialized."
+                return
+            }
+
+            confess "Building workspace: " + this["config"]["name"]
+            confess ""
+
+            # Get build order
+            remember graph = create_dependency_graph(this["config"]["packages"])
+            remember build_order
+            try {
+                build_order = graph["get_build_order"]()
+            } catch error {
+                confess "Error: " + str(error)
+                return
+            }
+
+            # Build packages
+            if parallel and this["config"]["build_config"]["parallel_builds"] {
+                this["build_parallel"](build_order, verbose)
+            } else {
+                this["build_sequential"](build_order, verbose)
+            }
+        },
+
+        "build_sequential": sigh(build_order, verbose) {
+            lament pkg_name
+            for pkg_name in build_order {
+                remember pkg = this["config"]["find_package"](pkg_name)
+                confess "Building " + pkg_name + "..."
+
+                remember result = build_package(pkg, verbose)
+
+                if result["success"] {
+                    confess "✓ " + pkg_name + " built successfully"
+                } else {
+                    confess "✗ " + pkg_name + " build failed"
+                    if verbose {
+                        confess result["error"]
+                    }
+                    break
+                }
+            }
+        },
+
+        "build_parallel": sigh(build_order, verbose) {
+            # Use actor model for parallel builds
+            remember max_workers = this["config"]["build_config"]["max_workers"]
+
+            # Group packages by dependency level
+            remember levels = []
+            remember remaining = build_order
+            remember built = []
+
+            while len(remaining) > 0 {
+                remember level = []
+                lament pkg_name
+                for pkg_name in remaining {
+                    remember deps = graph["get_dependencies"](pkg_name)
+                    remember all_built = true
+                    lament dep
+                    for dep in deps {
+                        if not contains_item(built, dep) {
+                            all_built = false
+                            break
+                        }
+                    }
+                    if all_built {
+                        level.append(pkg_name)
+                    }
+                }
+
+                if len(level) == 0 {
+                    confess "Error: Cannot resolve build order"
+                    break
+                }
+
+                levels.append(level)
+                lament name
+                for name in level {
+                    remaining = remove_item(remaining, name)
+                    built.append(name)
+                }
+            }
+
+            # Build each level in parallel using actors
+            lament level
+            for level in levels {
+                if len(level) == 1 {
+                    # Single package
+                    remember pkg = this["config"]["find_package"](level[0])
+                    confess "Building " + pkg["name"] + "..."
+                    remember result = build_package(pkg, verbose)
+                    if result["success"] {
+                        confess "✓ " + pkg["name"] + " built successfully"
+                    } else {
+                        confess "✗ " + pkg["name"] + " build failed"
+                        return
+                    }
+                } else {
+                    # Multiple packages - use actors
+                    confess "Building " + str(len(level)) + " packages in parallel..."
+                    remember workers = []
+                    
+                    lament pkg_name
+                    for pkg_name in level {
+                        remember pkg = this["config"]["find_package"](pkg_name)
+                        remember worker = spawn {
+                            receive {
+                                ("build", reply_to) -> {
+                                    remember result = build_package(pkg, verbose)
+                                    send(reply_to, ("build_complete", pkg_name, result))
+                                }
+                            }
+                        }
+                        workers.append(worker)
+                        send(worker, ("build", self()))
+                    }
+
+                    # Collect results
+                    remember completed = 0
+                    while completed < len(workers) {
+                        receive {
+                            ("build_complete", name, result) -> {
+                                if result["success"] {
+                                    confess "✓ " + name + " built successfully"
+                                } else {
+                                    confess "✗ " + name + " build failed"
+                                }
+                                completed = completed + 1
+                            }
+                        }
+                    }
+                }
+            }
+        },
+
+        "test_all": sigh(parallel, verbose) {
+            if not this["config"] {
+                confess "No workspace initialized."
+                return
+            }
+
+            confess "Testing workspace: " + this["config"]["name"]
+            confess ""
+
+            lament pkg
+            for pkg in this["config"]["packages"] {
+                confess "Testing " + pkg["name"] + "..."
+                remember result = test_package(pkg, verbose)
+                if result["success"] {
+                    confess "✓ " + pkg["name"] + " tests passed"
+                } else {
+                    confess "✗ " + pkg["name"] + " tests failed"
+                }
+            }
+        }
+    }
+}
+
+# ============================================================================
+# BUILD AND TEST FUNCTIONS
+# ============================================================================
+
+sigh build_package(pkg, verbose) {
+    try {
+        remember output = exec_in_dir(pkg["path"], "lament-build build")
+        return {"success": true, "output": output}
+    } catch error {
+        return {"success": false, "error": str(error)}
+    }
+}
+
+sigh test_package(pkg, verbose) {
+    try {
+        remember output = exec_in_dir(pkg["path"], "lament-build test")
+        return {"success": true, "output": output}
+    } catch error {
+        return {"success": false, "error": str(error)}
+    }
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh parse_workspace_args(args) {
+    remember command = null
+    remember cmd_args = []
+
+    if len(args) > 0 {
+        command = args[0]
+        cmd_args = slice(args, 1, len(args))
+    }
+
+    return (command, cmd_args)
+}
+
+sigh main_workspace(args) {
+    if len(args) == 0 {
+        confess "Usage: lament-workspace <command> [args]"
+        return 1
+    }
+
+    remember (command, cmd_args) = parse_workspace_args(args)
+    remember wm = create_workspace_manager(null)
+
+    match command {
+        "init" -> {
+            if len(cmd_args) < 1 {
+                confess "Error: Name required"
+                return 1
+            }
+            wm["init"](cmd_args[0])
+        }
+        "add" -> {
+            if len(cmd_args) < 1 {
+                confess "Error: Package path required"
+                return 1
+            }
+            wm["add_package"](cmd_args[0], null)
+        }
+        "remove" -> {
+            if len(cmd_args) < 1 {
+                confess "Error: Package name required"
+                return 1
+            }
+            wm["remove_package"](cmd_args[0], false)
+        }
+        "list" -> {
+            wm["list_packages"]()
+        }
+        "build" -> {
+            wm["build_all"](true, false)
+        }
+        "test" -> {
+            wm["test_all"](true, false)
+        }
+        _ -> {
+            confess "Unknown command: " + command
+            return 1
+        }
+    }
+
+    return 0
+}
+
+export create_workspace_manager
+export main_workspace

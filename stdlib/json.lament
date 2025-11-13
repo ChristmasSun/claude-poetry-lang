@@ -1,0 +1,569 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - JSON MODULE
+# ============================================================================
+# JSON parsing and generation
+# Provides comprehensive JSON encoding/decoding with streaming support
+# ============================================================================
+
+# ============================================================================
+# JSON PARSING
+# ============================================================================
+
+sigh parse(json_string) {
+    # Parse JSON string to Lament data structures
+    # Supports: objects, arrays, strings, numbers, booleans, null
+
+    attempt {
+        exhale json_parse(json_string)
+    } catch error {
+        raise "JSON parse error: ${error}"
+    }
+}
+
+sigh parse_safe(json_string, default_value) {
+    # Parse JSON with fallback on error
+
+    attempt {
+        exhale json_parse(json_string)
+    } catch error {
+        exhale default_value
+    }
+}
+
+sigh parse_stream(stream) {
+    # Parse JSON from stream/file handle
+    # Useful for large JSON files
+
+    attempt {
+        remember content = ""
+        remember chunk = stream_read(stream, 4096)
+
+        while string_length(chunk) > 0 {
+            content = "${content}${chunk}"
+            chunk = stream_read(stream, 4096)
+        }
+
+        exhale parse(content)
+    } catch error {
+        raise "JSON stream parse error: ${error}"
+    }
+}
+
+sigh parse_file(path) {
+    # Parse JSON from file
+
+    import { read_file } from "files.lament"
+
+    attempt {
+        remember content = read_file(path)
+        exhale parse(content)
+    } catch error {
+        raise "Failed to parse JSON file ${path}: ${error}"
+    }
+}
+
+# ============================================================================
+# JSON GENERATION
+# ============================================================================
+
+sigh stringify(data, indent, sort_keys) {
+    # Convert Lament data to JSON string
+    # indent: number of spaces for indentation (void = compact)
+    # sort_keys: whether to sort object keys (default: no)
+
+    if indent == void {
+        attempt {
+            exhale json_stringify(data)
+        } catch error {
+            raise "JSON stringify error: ${error}"
+        }
+    } else {
+        attempt {
+            if sort_keys is yes {
+                exhale json_stringify_sorted(data, indent)
+            } else {
+                exhale json_stringify(data, indent)
+            }
+        } catch error {
+            raise "JSON stringify error: ${error}"
+        }
+    }
+}
+
+sigh stringify_pretty(data, indent) {
+    # Pretty-print JSON with indentation
+
+    if indent == void {
+        indent = 2
+    }
+
+    exhale stringify(data, indent, no)
+}
+
+sigh stringify_compact(data) {
+    # Generate compact JSON (no whitespace)
+
+    exhale stringify(data, void, no)
+}
+
+sigh stringify_sorted(data, indent) {
+    # Generate JSON with sorted keys
+
+    if indent == void {
+        indent = 2
+    }
+
+    exhale stringify(data, indent, yes)
+}
+
+sigh to_file(data, path, pretty) {
+    # Write data as JSON to file
+
+    if pretty == void {
+        pretty = yes
+    }
+
+    import { write_file } from "files.lament"
+
+    attempt {
+        remember json_str = void
+        if pretty {
+            json_str = stringify_pretty(data)
+        } else {
+            json_str = stringify_compact(data)
+        }
+
+        write_file(path, json_str)
+        exhale yes
+    } catch error {
+        raise "Failed to write JSON to ${path}: ${error}"
+    }
+}
+
+# ============================================================================
+# JSON VALIDATION
+# ============================================================================
+
+sigh is_valid(json_string) {
+    # Check if string is valid JSON
+
+    attempt {
+        parse(json_string)
+        exhale yes
+    } catch error {
+        exhale no
+    }
+}
+
+sigh validate(json_string) {
+    # Validate JSON and return error message if invalid
+    # Returns: { valid: yes/no, error: "..." }
+
+    attempt {
+        parse(json_string)
+        exhale { "valid": yes, "error": void }
+    } catch error {
+        exhale { "valid": no, "error": error }
+    }
+}
+
+# ============================================================================
+# JSON PATH / QUERY
+# ============================================================================
+
+sigh get_path(data, path) {
+    # Get value at JSON path
+    # path: "root.child.array[0].field"
+
+    remember current = data
+    remember parts = parse_path(path)
+
+    for part in parts {
+        if typeof(current) == "dict" {
+            if not dict_has_key(current, part) {
+                exhale void
+            }
+            current = current[part]
+        } else {
+            if typeof(current) == "list" {
+                # Handle array index
+                remember index = parse_int(part)
+                if index < 0 or index >= length_of(current) {
+                    exhale void
+                }
+                current = current[index]
+            } else {
+                exhale void
+            }
+        }
+    }
+
+    exhale current
+}
+
+sigh set_path(data, path, value) {
+    # Set value at JSON path (creates intermediate objects)
+
+    remember parts = parse_path(path)
+    remember num_parts = length_of(parts)
+
+    if num_parts == 0 {
+        exhale data
+    }
+
+    # Deep clone the data
+    remember result = deep_clone(data)
+    remember current = result
+    remember i = 0
+
+    while i < num_parts - 1 {
+        remember part = parts[i]
+        remember next_part = parts[i + 1]
+
+        if typeof(current) == "dict" {
+            if not dict_has_key(current, part) {
+                # Create intermediate object or array
+                if is_numeric(next_part) {
+                    current[part] = []
+                } else {
+                    current[part] = {}
+                }
+            }
+            current = current[part]
+        } else {
+            if typeof(current) == "list" {
+                remember index = parse_int(part)
+                if index < 0 or index >= length_of(current) {
+                    raise "Invalid array index: ${index}"
+                }
+                current = current[index]
+            }
+        }
+
+        i = i + 1
+    }
+
+    # Set the final value
+    remember last_part = parts[num_parts - 1]
+    if typeof(current) == "dict" {
+        current[last_part] = value
+    } else {
+        if typeof(current) == "list" {
+            remember index = parse_int(last_part)
+            current[index] = value
+        }
+    }
+
+    exhale result
+}
+
+sigh has_path(data, path) {
+    # Check if path exists in JSON data
+
+    remember value = get_path(data, path)
+    exhale value != void
+}
+
+# ============================================================================
+# JSON MERGE / DIFF
+# ============================================================================
+
+sigh merge(obj1, obj2, deep) {
+    # Merge two JSON objects
+    # deep: whether to perform deep merge (default: no)
+
+    if deep == void {
+        deep = no
+    }
+
+    if typeof(obj1) != "dict" or typeof(obj2) != "dict" {
+        exhale obj2
+    }
+
+    remember result = {}
+
+    # Copy obj1
+    remember keys1 = dict_keys(obj1)
+    for key in keys1 {
+        if deep and typeof(obj1[key]) == "dict" {
+            result[key] = deep_clone(obj1[key])
+        } else {
+            result[key] = obj1[key]
+        }
+    }
+
+    # Merge obj2
+    remember keys2 = dict_keys(obj2)
+    for key in keys2 {
+        if deep and dict_has_key(result, key) {
+            if typeof(result[key]) == "dict" and typeof(obj2[key]) == "dict" {
+                result[key] = merge(result[key], obj2[key], yes)
+            } else {
+                result[key] = obj2[key]
+            }
+        } else {
+            result[key] = obj2[key]
+        }
+    }
+
+    exhale result
+}
+
+sigh deep_merge(obj1, obj2) {
+    # Deep merge two JSON objects
+
+    exhale merge(obj1, obj2, yes)
+}
+
+# ============================================================================
+# JSON MANIPULATION
+# ============================================================================
+
+sigh filter_keys(obj, keys_to_keep) {
+    # Filter object to only include specified keys
+
+    remember result = {}
+
+    for key in keys_to_keep {
+        if dict_has_key(obj, key) {
+            result[key] = obj[key]
+        }
+    }
+
+    exhale result
+}
+
+sigh omit_keys(obj, keys_to_omit) {
+    # Remove specified keys from object
+
+    remember result = {}
+    remember all_keys = dict_keys(obj)
+
+    for key in all_keys {
+        remember should_omit = no
+
+        for omit_key in keys_to_omit {
+            if key == omit_key {
+                should_omit = yes
+            }
+        }
+
+        if not should_omit {
+            result[key] = obj[key]
+        }
+    }
+
+    exhale result
+}
+
+sigh map_values(obj, fn) {
+    # Map function over all values in object
+
+    remember result = {}
+    remember keys = dict_keys(obj)
+
+    for key in keys {
+        result[key] = fn(obj[key])
+    }
+
+    exhale result
+}
+
+sigh flatten(obj, prefix, separator) {
+    # Flatten nested JSON object
+    # { a: { b: 1 } } -> { "a.b": 1 }
+
+    if prefix == void {
+        prefix = ""
+    }
+
+    if separator == void {
+        separator = "."
+    }
+
+    remember result = {}
+    remember keys = dict_keys(obj)
+
+    for key in keys {
+        remember value = obj[key]
+        remember new_key = key
+
+        if string_length(prefix) > 0 {
+            new_key = "${prefix}${separator}${key}"
+        }
+
+        if typeof(value) == "dict" {
+            remember flattened = flatten(value, new_key, separator)
+            remember flat_keys = dict_keys(flattened)
+
+            for flat_key in flat_keys {
+                result[flat_key] = flattened[flat_key]
+            }
+        } else {
+            result[new_key] = value
+        }
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# JSON SCHEMA / STRUCTURE
+# ============================================================================
+
+sigh keys_deep(obj, prefix) {
+    # Get all keys in nested object (including nested paths)
+
+    if prefix == void {
+        prefix = ""
+    }
+
+    remember result = []
+
+    if typeof(obj) != "dict" {
+        exhale result
+    }
+
+    remember keys = dict_keys(obj)
+
+    for key in keys {
+        remember full_key = key
+        if string_length(prefix) > 0 {
+            full_key = "${prefix}.${key}"
+        }
+
+        result = append_list(result, full_key)
+
+        remember value = obj[key]
+        if typeof(value) == "dict" {
+            remember nested_keys = keys_deep(value, full_key)
+            for nested_key in nested_keys {
+                result = append_list(result, nested_key)
+            }
+        }
+    }
+
+    exhale result
+}
+
+sigh typeof_path(data, path) {
+    # Get type of value at path
+
+    remember value = get_path(data, path)
+
+    if value == void {
+        exhale "void"
+    }
+
+    exhale typeof(value)
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh parse_path(path) {
+    # Parse JSON path string into array of parts
+    # "root.child[0].field" -> ["root", "child", "0", "field"]
+
+    import { split, replace } from "strings.lament"
+
+    # Replace array notation with dot notation
+    remember normalized = replace(path, "[", ".", -1)
+    normalized = replace(normalized, "]", "", -1)
+
+    # Split by dot
+    exhale split(normalized, ".")
+}
+
+sigh is_numeric(str) {
+    # Check if string represents a number
+
+    import { startswith } from "strings.lament"
+
+    if typeof(str) != "whisper" {
+        exhale no
+    }
+
+    remember len = string_length(str)
+    if len == 0 {
+        exhale no
+    }
+
+    remember i = 0
+    while i < len {
+        remember ch = char_at(str, i)
+        remember code = char_code(ch)
+
+        # Check if digit (0-9)
+        if code < 48 or code > 57 {
+            exhale no
+        }
+
+        i = i + 1
+    }
+
+    exhale yes
+}
+
+sigh deep_clone(value) {
+    # Deep clone JSON-compatible value
+
+    if typeof(value) == "dict" {
+        remember result = {}
+        remember keys = dict_keys(value)
+
+        for key in keys {
+            result[key] = deep_clone(value[key])
+        }
+
+        exhale result
+    } else {
+        if typeof(value) == "list" {
+            remember result = []
+
+            for item in value {
+                result = append_list(result, deep_clone(item))
+            }
+
+            exhale result
+        } else {
+            # Primitive value
+            exhale value
+        }
+    }
+}
+
+sigh append_list(list, item) {
+    remember result = []
+    for existing in list {
+        result = push(result, existing)
+    }
+    result = push(result, item)
+    exhale result
+}
+
+sigh dict_has_key(dict, key) {
+    attempt {
+        remember value = dict[key]
+        exhale yes
+    } catch error {
+        exhale no
+    }
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    parse, parse_safe, parse_stream, parse_file,
+    stringify, stringify_pretty, stringify_compact, stringify_sorted,
+    to_file,
+    is_valid, validate,
+    get_path, set_path, has_path,
+    merge, deep_merge,
+    filter_keys, omit_keys, map_values, flatten,
+    keys_deep, typeof_path,
+    deep_clone
+}

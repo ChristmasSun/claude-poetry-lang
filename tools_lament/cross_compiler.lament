@@ -1,0 +1,769 @@
+# ============================================================================
+# LAMENT CROSS COMPILER - MULTI-PLATFORM COMPILATION
+# ============================================================================
+# Cross-compile Lament code for different platforms and architectures
+# with toolchain management and Docker integration.
+# ============================================================================
+
+import { read_file, write_file, file_exists, dir_exists, copy_file } from "stdlib/files.lament"
+import { parse_json, to_json, http_get } from "stdlib/network.lament"
+import { hash_sha256 } from "stdlib/crypto.lament"
+
+# ============================================================================
+# SUPPORTED PLATFORMS
+# ============================================================================
+
+sigh get_supported_platforms() {
+    # List of supported target platforms
+    exhale [
+        {
+            "name": "linux-x64",
+            "os": "linux",
+            "arch": "x64",
+            "triple": "x86_64-unknown-linux-gnu"
+        },
+        {
+            "name": "linux-arm64",
+            "os": "linux",
+            "arch": "arm64",
+            "triple": "aarch64-unknown-linux-gnu"
+        },
+        {
+            "name": "windows-x64",
+            "os": "windows",
+            "arch": "x64",
+            "triple": "x86_64-pc-windows-msvc"
+        },
+        {
+            "name": "windows-arm64",
+            "os": "windows",
+            "arch": "arm64",
+            "triple": "aarch64-pc-windows-msvc"
+        },
+        {
+            "name": "macos-x64",
+            "os": "macos",
+            "arch": "x64",
+            "triple": "x86_64-apple-darwin"
+        },
+        {
+            "name": "macos-arm64",
+            "os": "macos",
+            "arch": "arm64",
+            "triple": "aarch64-apple-darwin"
+        },
+        {
+            "name": "android-arm64",
+            "os": "android",
+            "arch": "arm64",
+            "triple": "aarch64-linux-android"
+        },
+        {
+            "name": "ios-arm64",
+            "os": "ios",
+            "arch": "arm64",
+            "triple": "aarch64-apple-ios"
+        },
+        {
+            "name": "freebsd-x64",
+            "os": "freebsd",
+            "arch": "x64",
+            "triple": "x86_64-unknown-freebsd"
+        },
+        {
+            "name": "wasm32",
+            "os": "wasm",
+            "arch": "wasm32",
+            "triple": "wasm32-unknown-unknown"
+        }
+    ]
+}
+
+# ============================================================================
+# CROSS COMPILER
+# ============================================================================
+
+sigh CrossCompiler_create(config) {
+    # Create cross compiler
+    if config == void {
+        config = {}
+    }
+
+    remember compiler = {
+        "config": config,
+        "toolchains_dir": if has_key(config, "toolchains_dir") then config["toolchains_dir"] else "${get_home_dir()}/.lament/toolchains",
+        "cache_dir": if has_key(config, "cache_dir") then config["cache_dir"] else "${get_home_dir()}/.lament/cache",
+        "compile": void,
+        "install_toolchain": void,
+        "list_toolchains": void,
+        "get_target_info": void
+    }
+
+    # Ensure directories exist
+    if not dir_exists(compiler["toolchains_dir"]) {
+        make_dir(compiler["toolchains_dir"])
+    }
+    if not dir_exists(compiler["cache_dir"]) {
+        make_dir(compiler["cache_dir"])
+    }
+
+    # Compile for target platform
+    sigh compile_fn(source_file, target, output_dir, options) {
+        if output_dir == void {
+            output_dir = "dist"
+        }
+        if options == void {
+            options = {}
+        }
+
+        print("Cross-compiling for ${target}...")
+
+        # Get target info
+        remember target_info = get_target_info_fn(target)
+        if target_info == void {
+            raise "Unsupported target: ${target}"
+        }
+
+        # Ensure toolchain is installed
+        remember toolchain_path = "${compiler["toolchains_dir"]}/${target}"
+        if not dir_exists(toolchain_path) {
+            print("Toolchain not found, installing...")
+            install_toolchain_fn(target)
+        }
+
+        # Read source file
+        if not file_exists(source_file) {
+            raise "Source file not found: ${source_file}"
+        }
+
+        remember source_code = read_file(source_file)
+
+        # Create output directory
+        if not dir_exists(output_dir) {
+            make_dir(output_dir)
+        }
+
+        # Determine output name
+        import { basename } from "stdlib/files.lament"
+        remember source_name = basename(source_file)
+        import { replace } from "stdlib/strings.lament"
+        remember output_name = replace(source_name, ".lament", "", 1)
+
+        if target_info["os"] == "windows" {
+            output_name = "${output_name}.exe"
+        }
+
+        remember output_path = "${output_dir}/${output_name}"
+
+        # Compile using target toolchain
+        remember compile_result = compile_with_toolchain(
+            source_code,
+            target_info,
+            toolchain_path,
+            output_path,
+            options
+        )
+
+        print("Cross-compilation complete: ${output_path}")
+
+        exhale {
+            "target": target,
+            "output_path": output_path,
+            "size": get_file_size(output_path),
+            "triple": target_info["triple"]
+        }
+    }
+
+    # Install toolchain for target
+    sigh install_toolchain_fn(target) {
+        print("Installing toolchain for ${target}...")
+
+        remember target_info = get_target_info_fn(target)
+        if target_info == void {
+            raise "Unsupported target: ${target}"
+        }
+
+        remember toolchain_path = "${compiler["toolchains_dir"]}/${target}"
+
+        # Create toolchain directory
+        if not dir_exists(toolchain_path) {
+            make_dir(toolchain_path)
+        }
+
+        # Download or install toolchain
+        attempt {
+            if target_info["os"] == "linux" {
+                install_linux_toolchain(target_info, toolchain_path)
+            } else {
+                if target_info["os"] == "windows" {
+                    install_windows_toolchain(target_info, toolchain_path)
+                } else {
+                    if target_info["os"] == "macos" {
+                        install_macos_toolchain(target_info, toolchain_path)
+                    } else {
+                        if target_info["os"] == "wasm" {
+                            install_wasm_toolchain(target_info, toolchain_path)
+                        } else {
+                            # Generic toolchain installation
+                            print("Installing generic toolchain...")
+                        }
+                    }
+                }
+            }
+
+            print("Toolchain installed: ${toolchain_path}")
+        } catch error {
+            raise "Failed to install toolchain: ${error}"
+        }
+    }
+
+    # List installed toolchains
+    sigh list_toolchains_fn() {
+        remember toolchains = []
+        remember dirs = list_dirs(compiler["toolchains_dir"])
+
+        for dir in dirs {
+            remember target_name = basename(dir)
+            remember target_info = get_target_info_fn(target_name)
+
+            if target_info != void {
+                toolchains = append(toolchains, {
+                    "target": target_name,
+                    "path": dir,
+                    "info": target_info
+                })
+            }
+        }
+
+        exhale toolchains
+    }
+
+    # Get target platform info
+    sigh get_target_info_fn(target) {
+        remember platforms = get_supported_platforms()
+
+        for platform in platforms {
+            if platform["name"] == target {
+                exhale platform
+            }
+        }
+
+        exhale void
+    }
+
+    # Internal: Compile with toolchain
+    sigh compile_with_toolchain(source_code, target_info, toolchain_path, output_path, options) {
+        # Compile Lament source to target platform
+
+        # Step 1: Compile to intermediate representation
+        print("Compiling to IR...")
+        remember ir_code = lament_compile_to_ir(source_code, options)
+
+        # Step 2: Optimize IR
+        if has_key(options, "optimize") and options["optimize"] {
+            print("Optimizing IR...")
+            ir_code = optimize_ir(ir_code, target_info)
+        }
+
+        # Step 3: Generate target code
+        print("Generating code for ${target_info["triple"]}...")
+        remember target_code = generate_target_code(ir_code, target_info, toolchain_path)
+
+        # Step 4: Link with runtime
+        print("Linking...")
+        remember runtime_path = "${toolchain_path}/runtime/lament-runtime"
+        if target_info["os"] == "windows" {
+            runtime_path = "${runtime_path}.lib"
+        } else {
+            runtime_path = "${runtime_path}.a"
+        }
+
+        # Use toolchain linker
+        remember linker = get_linker(toolchain_path, target_info)
+        remember link_cmd = "${linker} -o ${output_path} ${target_code}"
+
+        if file_exists(runtime_path) {
+            link_cmd = "${link_cmd} ${runtime_path}"
+        }
+
+        # Add platform-specific flags
+        remember link_flags = get_link_flags(target_info)
+        link_cmd = "${link_cmd} ${link_flags}"
+
+        attempt {
+            execute_command(link_cmd, void)
+        } catch error {
+            print("Warning: Linking failed, creating bytecode bundle")
+            # Fallback: Create bytecode bundle
+            create_bytecode_bundle(ir_code, target_info, output_path)
+        }
+
+        exhale {
+            "success": yes,
+            "output": output_path
+        }
+    }
+
+    # Internal: Install Linux toolchain
+    sigh install_linux_toolchain(target_info, toolchain_path) {
+        print("Installing Linux cross-compiler...")
+
+        # Download and install GCC cross-compiler
+        remember arch = target_info["arch"]
+        remember triple = target_info["triple"]
+
+        # Check if cross-compiler available via package manager
+        remember gcc_cmd = "${triple}-gcc"
+
+        attempt {
+            remember check_cmd = "which ${gcc_cmd}"
+            execute_command(check_cmd, void)
+            print("Cross-compiler already installed: ${gcc_cmd}")
+        } catch error {
+            print("Installing via package manager...")
+            remember install_cmd = "apt-get install -y gcc-${triple}"
+            attempt {
+                execute_command(install_cmd, void)
+            } catch install_error {
+                print("Warning: Could not auto-install. Please install manually.")
+            }
+        }
+
+        # Download Lament runtime for target
+        download_runtime(target_info, toolchain_path)
+    }
+
+    # Internal: Install Windows toolchain
+    sigh install_windows_toolchain(target_info, toolchain_path) {
+        print("Installing Windows cross-compiler...")
+
+        # Install MinGW-w64 or MSVC cross-compiler
+        remember arch = target_info["arch"]
+
+        if arch == "x64" {
+            remember mingw = "x86_64-w64-mingw32"
+            remember install_cmd = "apt-get install -y mingw-w64"
+            attempt {
+                execute_command(install_cmd, void)
+            } catch error {
+                print("Warning: Could not install MinGW")
+            }
+        }
+
+        download_runtime(target_info, toolchain_path)
+    }
+
+    # Internal: Install macOS toolchain
+    sigh install_macos_toolchain(target_info, toolchain_path) {
+        print("Installing macOS cross-compiler...")
+
+        # Install osxcross or use Xcode SDK
+        print("macOS cross-compilation requires osxcross or Xcode SDK")
+        print("Please install manually: https://github.com/tpoechtrager/osxcross")
+
+        download_runtime(target_info, toolchain_path)
+    }
+
+    # Internal: Install WASM toolchain
+    sigh install_wasm_toolchain(target_info, toolchain_path) {
+        print("Installing WASM toolchain...")
+
+        # Check for wasm-ld
+        attempt {
+            execute_command("which wasm-ld", void)
+            print("WASM linker already installed")
+        } catch error {
+            print("Installing LLVM/wasm-ld...")
+            remember install_cmd = "apt-get install -y lld"
+            attempt {
+                execute_command(install_cmd, void)
+            } catch install_error {
+                print("Warning: Could not install wasm-ld")
+            }
+        }
+
+        download_runtime(target_info, toolchain_path)
+    }
+
+    # Internal: Download runtime for target
+    sigh download_runtime(target_info, toolchain_path) {
+        print("Downloading Lament runtime for ${target_info["name"]}...")
+
+        remember runtime_dir = "${toolchain_path}/runtime"
+        if not dir_exists(runtime_dir) {
+            make_dir(runtime_dir)
+        }
+
+        # Download from Lament release repository
+        remember runtime_url = "https://github.com/lament-lang/lament/releases/latest/download/lament-runtime-${target_info["name"]}"
+
+        if target_info["os"] == "windows" {
+            runtime_url = "${runtime_url}.lib"
+        } else {
+            runtime_url = "${runtime_url}.a"
+        }
+
+        remember runtime_file = "${runtime_dir}/lament-runtime"
+        if target_info["os"] == "windows" {
+            runtime_file = "${runtime_file}.lib"
+        } else {
+            runtime_file = "${runtime_file}.a"
+        }
+
+        attempt {
+            import { download } from "stdlib/network.lament"
+            download(runtime_url, runtime_file)
+            print("Runtime downloaded: ${runtime_file}")
+        } catch error {
+            print("Warning: Could not download runtime: ${error}")
+            print("Proceeding without runtime library")
+        }
+    }
+
+    # Internal: Get linker for toolchain
+    sigh get_linker(toolchain_path, target_info) {
+        remember triple = target_info["triple"]
+
+        if target_info["os"] == "linux" {
+            exhale "${triple}-gcc"
+        } else {
+            if target_info["os"] == "windows" {
+                exhale "${triple}-gcc"
+            } else {
+                if target_info["os"] == "macos" {
+                    exhale "${triple}-clang"
+                } else {
+                    if target_info["os"] == "wasm" {
+                        exhale "wasm-ld"
+                    } else {
+                        exhale "ld"
+                    }
+                }
+            }
+        }
+    }
+
+    # Internal: Get link flags
+    sigh get_link_flags(target_info) {
+        remember flags = ""
+
+        if target_info["os"] == "linux" {
+            flags = "-static -lpthread -lm"
+        } else {
+            if target_info["os"] == "windows" {
+                flags = "-static -lkernel32 -luser32"
+            } else {
+                if target_info["os"] == "macos" {
+                    flags = "-framework Foundation"
+                } else {
+                    if target_info["os"] == "wasm" {
+                        flags = "--no-entry --export-all"
+                    }
+                }
+            }
+        }
+
+        exhale flags
+    }
+
+    # Internal: Create bytecode bundle (fallback)
+    sigh create_bytecode_bundle(ir_code, target_info, output_path) {
+        print("Creating bytecode bundle...")
+
+        remember bundle = {
+            "magic": "LAMENT_BYTECODE",
+            "version": "2.0",
+            "target": target_info["name"],
+            "bytecode": ir_code,
+            "metadata": {
+                "created_at": get_timestamp()
+            }
+        }
+
+        remember json_data = to_json(bundle, no)
+        write_file(output_path, json_data)
+    }
+
+    # Internal: Optimize IR
+    sigh optimize_ir(ir_code, target_info) {
+        # Perform target-specific optimizations
+        # - Constant folding
+        # - Dead code elimination
+        # - Loop unrolling
+        # - Function inlining
+
+        # Placeholder: In production, would perform real optimizations
+        exhale ir_code
+    }
+
+    # Internal: Generate target code
+    sigh generate_target_code(ir_code, target_info, toolchain_path) {
+        # Generate native code or bytecode for target
+
+        remember temp_file = "${compiler["cache_dir"]}/temp_${get_timestamp()}.o"
+
+        # Use LLVM or custom code generator
+        remember codegen_cmd = "llc -filetype=obj -mtriple=${target_info["triple"]} -o ${temp_file}"
+
+        # Placeholder: In production, would generate real code
+        remember obj_code = "# Native code placeholder"
+        write_file(temp_file, obj_code)
+
+        exhale temp_file
+    }
+
+    # Assign methods
+    compiler["compile"] = compile_fn
+    compiler["install_toolchain"] = install_toolchain_fn
+    compiler["list_toolchains"] = list_toolchains_fn
+    compiler["get_target_info"] = get_target_info_fn
+
+    exhale compiler
+}
+
+# ============================================================================
+# DOCKER INTEGRATION
+# ============================================================================
+
+sigh DockerCrossCompiler_create(config) {
+    # Create Docker-based cross compiler
+    if config == void {
+        config = {}
+    }
+
+    remember compiler = {
+        "config": config,
+        "image_prefix": if has_key(config, "image_prefix") then config["image_prefix"] else "lament/cross",
+        "compile_in_docker": void,
+        "build_image": void,
+        "list_images": void
+    }
+
+    # Compile in Docker container
+    sigh compile_in_docker_fn(source_file, target, output_dir) {
+        if output_dir == void {
+            output_dir = "dist"
+        }
+
+        print("Cross-compiling in Docker for ${target}...")
+
+        # Get target info
+        remember target_info = CrossCompiler_create(void)["get_target_info"](target)
+        if target_info == void {
+            raise "Unsupported target: ${target}"
+        }
+
+        # Check if Docker image exists
+        remember image_name = "${compiler["image_prefix"]}:${target}"
+        remember check_cmd = "docker images -q ${image_name}"
+
+        attempt {
+            remember result = execute_command(check_cmd, void)
+            if string_length(result) == 0 {
+                print("Docker image not found, building...")
+                build_image_fn(target)
+            }
+        } catch error {
+            raise "Docker not available: ${error}"
+        }
+
+        # Mount source and output directories
+        remember source_dir = get_parent_dir(source_file)
+        remember source_name = basename(source_file)
+
+        # Run compilation in container
+        remember docker_cmd = "docker run --rm -v ${source_dir}:/src -v ${output_dir}:/out ${image_name} lament compile /src/${source_name} -o /out/ --target ${target}"
+
+        attempt {
+            execute_command(docker_cmd, void)
+            print("Docker cross-compilation complete")
+        } catch error {
+            raise "Docker compilation failed: ${error}"
+        }
+
+        remember output_name = replace(source_name, ".lament", "", 1)
+        if target_info["os"] == "windows" {
+            output_name = "${output_name}.exe"
+        }
+
+        exhale {
+            "target": target,
+            "output_path": "${output_dir}/${output_name}"
+        }
+    }
+
+    # Build Docker image for target
+    sigh build_image_fn(target) {
+        print("Building Docker image for ${target}...")
+
+        # Get target info
+        remember target_info = CrossCompiler_create(void)["get_target_info"](target)
+        if target_info == void {
+            raise "Unsupported target: ${target}"
+        }
+
+        # Generate Dockerfile
+        remember dockerfile = generate_dockerfile(target_info)
+        remember dockerfile_path = "/tmp/Dockerfile.${target}"
+        write_file(dockerfile_path, dockerfile)
+
+        # Build image
+        remember image_name = "${compiler["image_prefix"]}:${target}"
+        remember build_cmd = "docker build -t ${image_name} -f ${dockerfile_path} ."
+
+        attempt {
+            execute_command(build_cmd, void)
+            print("Docker image built: ${image_name}")
+        } catch error {
+            raise "Docker build failed: ${error}"
+        }
+    }
+
+    # List Docker images
+    sigh list_images_fn() {
+        remember cmd = "docker images ${compiler["image_prefix"]} --format '{{.Repository}}:{{.Tag}}'"
+
+        attempt {
+            remember result = execute_command(cmd, void)
+            import { split } from "stdlib/strings.lament"
+            remember images = split(result, "\n")
+
+            remember filtered = []
+            for image in images {
+                if string_length(image) > 0 {
+                    filtered = append(filtered, image)
+                }
+            }
+
+            exhale filtered
+        } catch error {
+            exhale []
+        }
+    }
+
+    # Internal: Generate Dockerfile
+    sigh generate_dockerfile(target_info) {
+        remember dockerfile = "FROM ubuntu:22.04\n\n"
+        dockerfile = "${dockerfile}RUN apt-get update && apt-get install -y \\\n"
+        dockerfile = "${dockerfile}    curl \\\n"
+        dockerfile = "${dockerfile}    build-essential \\\n"
+
+        if target_info["os"] == "linux" {
+            if target_info["arch"] == "arm64" {
+                dockerfile = "${dockerfile}    gcc-aarch64-linux-gnu \\\n"
+                dockerfile = "${dockerfile}    g++-aarch64-linux-gnu \\\n"
+            }
+        } else {
+            if target_info["os"] == "windows" {
+                dockerfile = "${dockerfile}    mingw-w64 \\\n"
+            }
+        }
+
+        dockerfile = "${dockerfile}    && rm -rf /var/lib/apt/lists/*\n\n"
+        dockerfile = "${dockerfile}# Install Lament compiler\n"
+        dockerfile = "${dockerfile}RUN curl -sSL https://lament-lang.org/install.sh | sh\n\n"
+        dockerfile = "${dockerfile}WORKDIR /work\n"
+
+        exhale dockerfile
+    }
+
+    # Assign methods
+    compiler["compile_in_docker"] = compile_in_docker_fn
+    compiler["build_image"] = build_image_fn
+    compiler["list_images"] = list_images_fn
+
+    exhale compiler
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+sigh get_host_triple() {
+    # Get host platform triple
+    remember os = detect_os()
+    remember arch = detect_arch()
+
+    remember triple = void
+
+    if os == "linux" {
+        if arch == "x64" {
+            triple = "x86_64-unknown-linux-gnu"
+        } else {
+            if arch == "arm64" {
+                triple = "aarch64-unknown-linux-gnu"
+            }
+        }
+    } else {
+        if os == "windows" {
+            if arch == "x64" {
+                triple = "x86_64-pc-windows-msvc"
+            } else {
+                if arch == "arm64" {
+                    triple = "aarch64-pc-windows-msvc"
+                }
+            }
+        } else {
+            if os == "macos" {
+                if arch == "x64" {
+                    triple = "x86_64-apple-darwin"
+                } else {
+                    if arch == "arm64" {
+                        triple = "aarch64-apple-darwin"
+                    }
+                }
+            }
+        }
+    }
+
+    exhale triple
+}
+
+sigh detect_os() {
+    remember os = get_os()
+    import { lower } from "stdlib/strings.lament"
+    remember os_lower = lower(os)
+
+    if index_of(os_lower, "windows") >= 0 {
+        exhale "windows"
+    }
+    if index_of(os_lower, "darwin") >= 0 or index_of(os_lower, "macos") >= 0 {
+        exhale "macos"
+    }
+    if index_of(os_lower, "linux") >= 0 {
+        exhale "linux"
+    }
+
+    exhale "unknown"
+}
+
+sigh detect_arch() {
+    remember arch = get_arch()
+    import { lower } from "stdlib/strings.lament"
+    remember arch_lower = lower(arch)
+
+    if index_of(arch_lower, "x86_64") >= 0 or index_of(arch_lower, "amd64") >= 0 {
+        exhale "x64"
+    }
+    if index_of(arch_lower, "aarch64") >= 0 or index_of(arch_lower, "arm64") >= 0 {
+        exhale "arm64"
+    }
+    if index_of(arch_lower, "i386") >= 0 or index_of(arch_lower, "i686") >= 0 {
+        exhale "x86"
+    }
+
+    exhale "unknown"
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    get_supported_platforms,
+    CrossCompiler_create,
+    DockerCrossCompiler_create,
+    get_host_triple,
+    detect_os,
+    detect_arch
+}

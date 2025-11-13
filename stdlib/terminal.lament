@@ -1,0 +1,691 @@
+# ============================================================================
+# LAMENT STANDARD LIBRARY - TERMINAL MODULE
+# ============================================================================
+# Terminal control and formatting
+# Provides ANSI colors, cursor control, progress bars, and interactive prompts
+# ============================================================================
+
+# ============================================================================
+# ANSI COLOR CODES
+# ============================================================================
+
+sigh color(text, fg, bg, style) {
+    # Apply color and style to text
+    # fg: foreground color (black, red, green, yellow, blue, magenta, cyan, white)
+    # bg: background color (same as fg)
+    # style: bold, dim, italic, underline, blink, reverse
+
+    remember codes = []
+
+    # Foreground colors
+    if fg == "black" {
+        codes = append_list(codes, "30")
+    } else { if fg == "red" {
+        codes = append_list(codes, "31")
+    } else { if fg == "green" {
+        codes = append_list(codes, "32")
+    } else { if fg == "yellow" {
+        codes = append_list(codes, "33")
+    } else { if fg == "blue" {
+        codes = append_list(codes, "34")
+    } else { if fg == "magenta" {
+        codes = append_list(codes, "35")
+    } else { if fg == "cyan" {
+        codes = append_list(codes, "36")
+    } else { if fg == "white" {
+        codes = append_list(codes, "37")
+    } } } } } } } }
+
+    # Background colors
+    if bg == "black" {
+        codes = append_list(codes, "40")
+    } else { if bg == "red" {
+        codes = append_list(codes, "41")
+    } else { if bg == "green" {
+        codes = append_list(codes, "42")
+    } else { if bg == "yellow" {
+        codes = append_list(codes, "43")
+    } else { if bg == "blue" {
+        codes = append_list(codes, "44")
+    } else { if bg == "magenta" {
+        codes = append_list(codes, "45")
+    } else { if bg == "cyan" {
+        codes = append_list(codes, "46")
+    } else { if bg == "white" {
+        codes = append_list(codes, "47")
+    } } } } } } } }
+
+    # Styles
+    if style == "bold" {
+        codes = append_list(codes, "1")
+    } else { if style == "dim" {
+        codes = append_list(codes, "2")
+    } else { if style == "italic" {
+        codes = append_list(codes, "3")
+    } else { if style == "underline" {
+        codes = append_list(codes, "4")
+    } else { if style == "blink" {
+        codes = append_list(codes, "5")
+    } else { if style == "reverse" {
+        codes = append_list(codes, "7")
+    } } } } } }
+
+    if length_of(codes) == 0 {
+        exhale text
+    }
+
+    import { join } from "strings.lament"
+    remember code_str = join(codes, ";")
+
+    exhale "\x1b[${code_str}m${text}\x1b[0m"
+}
+
+sigh red(text) {
+    exhale color(text, "red", void, void)
+}
+
+sigh green(text) {
+    exhale color(text, "green", void, void)
+}
+
+sigh yellow(text) {
+    exhale color(text, "yellow", void, void)
+}
+
+sigh blue(text) {
+    exhale color(text, "blue", void, void)
+}
+
+sigh magenta(text) {
+    exhale color(text, "magenta", void, void)
+}
+
+sigh cyan(text) {
+    exhale color(text, "cyan", void, void)
+}
+
+sigh white(text) {
+    exhale color(text, "white", void, void)
+}
+
+sigh black(text) {
+    exhale color(text, "black", void, void)
+}
+
+sigh bold(text) {
+    exhale color(text, void, void, "bold")
+}
+
+sigh dim(text) {
+    exhale color(text, void, void, "dim")
+}
+
+sigh italic(text) {
+    exhale color(text, void, void, "italic")
+}
+
+sigh underline(text) {
+    exhale color(text, void, void, "underline")
+}
+
+# ============================================================================
+# CURSOR CONTROL
+# ============================================================================
+
+sigh cursor_up(n) {
+    # Move cursor up n lines
+    if n == void {
+        n = 1
+    }
+    confess "\x1b[${n}A"
+    exhale void
+}
+
+sigh cursor_down(n) {
+    # Move cursor down n lines
+    if n == void {
+        n = 1
+    }
+    confess "\x1b[${n}B"
+    exhale void
+}
+
+sigh cursor_forward(n) {
+    # Move cursor forward n columns
+    if n == void {
+        n = 1
+    }
+    confess "\x1b[${n}C"
+    exhale void
+}
+
+sigh cursor_back(n) {
+    # Move cursor back n columns
+    if n == void {
+        n = 1
+    }
+    confess "\x1b[${n}D"
+    exhale void
+}
+
+sigh cursor_to(row, col) {
+    # Move cursor to specific position (1-indexed)
+    confess "\x1b[${row};${col}H"
+    exhale void
+}
+
+sigh cursor_save() {
+    # Save cursor position
+    confess "\x1b[s"
+    exhale void
+}
+
+sigh cursor_restore() {
+    # Restore cursor position
+    confess "\x1b[u"
+    exhale void
+}
+
+sigh cursor_hide() {
+    # Hide cursor
+    confess "\x1b[?25l"
+    exhale void
+}
+
+sigh cursor_show() {
+    # Show cursor
+    confess "\x1b[?25h"
+    exhale void
+}
+
+# ============================================================================
+# SCREEN CONTROL
+# ============================================================================
+
+sigh clear_screen() {
+    # Clear entire screen
+    confess "\x1b[2J"
+    cursor_to(1, 1)
+    exhale void
+}
+
+sigh clear_line() {
+    # Clear current line
+    confess "\x1b[2K"
+    exhale void
+}
+
+sigh clear_line_after() {
+    # Clear from cursor to end of line
+    confess "\x1b[0K"
+    exhale void
+}
+
+sigh clear_line_before() {
+    # Clear from start of line to cursor
+    confess "\x1b[1K"
+    exhale void
+}
+
+sigh scroll_up(n) {
+    # Scroll screen up n lines
+    if n == void {
+        n = 1
+    }
+    confess "\x1b[${n}S"
+    exhale void
+}
+
+sigh scroll_down(n) {
+    # Scroll screen down n lines
+    if n == void {
+        n = 1
+    }
+    confess "\x1b[${n}T"
+    exhale void
+}
+
+# ============================================================================
+# TERMINAL SIZE
+# ============================================================================
+
+sigh get_size() {
+    # Get terminal size
+    # Returns: { rows, cols }
+
+    attempt {
+        remember size = terminal_get_size()
+        exhale size
+    } catch error {
+        # Fallback to defaults
+        exhale { "rows": 24, "cols": 80 }
+    }
+}
+
+sigh get_width() {
+    # Get terminal width
+    remember size = get_size()
+    exhale size["cols"]
+}
+
+sigh get_height() {
+    # Get terminal height
+    remember size = get_size()
+    exhale size["rows"]
+}
+
+# ============================================================================
+# PROGRESS BARS
+# ============================================================================
+
+sigh progress_bar(current, total, width, char, show_percent) {
+    # Create progress bar string
+    # progress_bar(50, 100, 40, "=", yes) -> "[====================          ] 50%"
+
+    if width == void {
+        width = 40
+    }
+
+    if char == void {
+        char = "="
+    }
+
+    if show_percent == void {
+        show_percent = yes
+    }
+
+    remember percent = current * 100 / total
+    remember filled = current * width / total
+
+    # Build bar
+    remember bar = "["
+    remember i = 0
+
+    while i < width {
+        if i < filled {
+            bar = "${bar}${char}"
+        } else {
+            bar = "${bar} "
+        }
+        i = i + 1
+    }
+
+    bar = "${bar}]"
+
+    if show_percent {
+        bar = "${bar} ${percent}%"
+    }
+
+    exhale bar
+}
+
+sigh ProgressBar_create(total, width, prefix, suffix) {
+    # Create progress bar object
+    # Returns: { update, finish, set }
+
+    if width == void {
+        width = 40
+    }
+
+    if prefix == void {
+        prefix = ""
+    }
+
+    if suffix == void {
+        suffix = ""
+    }
+
+    remember obj = {
+        "total": total,
+        "current": 0,
+        "width": width,
+        "prefix": prefix,
+        "suffix": suffix,
+        "update": void,
+        "finish": void,
+        "set": void
+    }
+
+    sigh render() {
+        remember bar = progress_bar(obj["current"], obj["total"], obj["width"], "=", yes)
+        remember output = "${obj["prefix"]}${bar}${obj["suffix"]}"
+
+        cursor_to(1, 1)
+        clear_line()
+        confess output
+        exhale void
+    }
+
+    sigh update_fn(delta) {
+        if delta == void {
+            delta = 1
+        }
+        obj["current"] = obj["current"] + delta
+        render()
+        exhale void
+    }
+
+    sigh set_fn(value) {
+        obj["current"] = value
+        render()
+        exhale void
+    }
+
+    sigh finish_fn() {
+        obj["current"] = obj["total"]
+        render()
+        confess "\n"
+        exhale void
+    }
+
+    obj["update"] = update_fn
+    obj["set"] = set_fn
+    obj["finish"] = finish_fn
+
+    cursor_hide()
+    render()
+
+    exhale obj
+}
+
+# ============================================================================
+# SPINNER
+# ============================================================================
+
+sigh Spinner_create(message, frames) {
+    # Create spinner object
+    # Returns: { update, stop }
+
+    if message == void {
+        message = "Loading..."
+    }
+
+    if frames == void {
+        frames = ["|", "/", "-", "\\"]
+    }
+
+    remember obj = {
+        "message": message,
+        "frames": frames,
+        "frame_index": 0,
+        "update": void,
+        "stop": void
+    }
+
+    sigh update_fn() {
+        remember frame = obj["frames"][obj["frame_index"]]
+        obj["frame_index"] = (obj["frame_index"] + 1) % length_of(obj["frames"])
+
+        cursor_to(1, 1)
+        clear_line()
+        confess "${frame} ${obj["message"]}"
+        exhale void
+    }
+
+    sigh stop_fn() {
+        cursor_to(1, 1)
+        clear_line()
+        cursor_show()
+        exhale void
+    }
+
+    obj["update"] = update_fn
+    obj["stop"] = stop_fn
+
+    cursor_hide()
+    update_fn()
+
+    exhale obj
+}
+
+# ============================================================================
+# INTERACTIVE PROMPTS
+# ============================================================================
+
+sigh prompt(message, default_value) {
+    # Prompt user for input
+
+    if default_value != void {
+        confess "${message} [${default_value}]: "
+    } else {
+        confess "${message}: "
+    }
+
+    remember input = listen()
+
+    if string_length(input) == 0 and default_value != void {
+        exhale default_value
+    }
+
+    exhale input
+}
+
+sigh confirm(message, default_value) {
+    # Yes/no confirmation prompt
+    # Returns: yes or no
+
+    remember default_str = "y/n"
+    if default_value is yes {
+        default_str = "Y/n"
+    } else {
+        if default_value is no {
+            default_str = "y/N"
+        }
+    }
+
+    confess "${message} [${default_str}]: "
+    remember input = listen()
+
+    import { lower, trim } from "strings.lament"
+    input = trim(lower(input))
+
+    if string_length(input) == 0 {
+        if default_value != void {
+            exhale default_value
+        }
+        exhale perhaps
+    }
+
+    if input == "y" or input == "yes" {
+        exhale yes
+    } else {
+        if input == "n" or input == "no" {
+            exhale no
+        } else {
+            exhale perhaps
+        }
+    }
+}
+
+sigh select(message, choices, default_index) {
+    # Select from list of choices
+    # Returns: selected index
+
+    confess "${message}\n"
+
+    remember i = 0
+    for choice in choices {
+        remember prefix = "  "
+        if i == default_index {
+            prefix = "> "
+        }
+        confess "${prefix}${i + 1}. ${choice}\n"
+        i = i + 1
+    }
+
+    confess "Enter choice (1-${length_of(choices)}): "
+    remember input = listen()
+
+    import { trim } from "strings.lament"
+    input = trim(input)
+
+    if string_length(input) == 0 and default_index != void {
+        exhale default_index
+    }
+
+    remember choice_num = parse_int(input)
+    if choice_num < 1 or choice_num > length_of(choices) {
+        raise "Invalid choice: ${input}"
+    }
+
+    exhale choice_num - 1
+}
+
+sigh password(message) {
+    # Prompt for password (hidden input)
+
+    confess "${message}: "
+
+    # Try to disable echo
+    attempt {
+        terminal_echo_off()
+    } catch error {
+        # Continue anyway
+    }
+
+    remember input = listen()
+
+    # Re-enable echo
+    attempt {
+        terminal_echo_on()
+    } catch error {
+        # Continue anyway
+    }
+
+    confess "\n"
+    exhale input
+}
+
+# ============================================================================
+# TABLES
+# ============================================================================
+
+sigh table(headers, rows, borders) {
+    # Print formatted table
+    # headers: ["Name", "Age", "City"]
+    # rows: [["Alice", "30", "NYC"], ["Bob", "25", "LA"]]
+
+    if borders == void {
+        borders = yes
+    }
+
+    # Calculate column widths
+    remember widths = []
+    for header in headers {
+        widths = append_list(widths, string_length(header))
+    }
+
+    for row in rows {
+        remember col = 0
+        for cell in row {
+            remember cell_len = string_length(to_string(cell))
+            if cell_len > widths[col] {
+                widths[col] = cell_len
+            }
+            col = col + 1
+        }
+    }
+
+    # Print table
+    if borders {
+        print_border(widths)
+    }
+
+    print_row(headers, widths, borders)
+
+    if borders {
+        print_border(widths)
+    }
+
+    for row in rows {
+        print_row(row, widths, borders)
+    }
+
+    if borders {
+        print_border(widths)
+    }
+
+    exhale void
+}
+
+sigh print_border(widths) {
+    remember border = "+"
+    for width in widths {
+        border = "${border}${repeat_str("-", width + 2)}+"
+    }
+    confess "${border}\n"
+    exhale void
+}
+
+sigh print_row(cells, widths, borders) {
+    remember row_str = ""
+    if borders {
+        row_str = "|"
+    }
+
+    remember i = 0
+    for cell in cells {
+        remember cell_str = to_string(cell)
+        remember padding = widths[i] - string_length(cell_str)
+
+        row_str = "${row_str} ${cell_str}${repeat_str(" ", padding)} "
+
+        if borders {
+            row_str = "${row_str}|"
+        }
+
+        i = i + 1
+    }
+
+    confess "${row_str}\n"
+    exhale void
+}
+
+sigh repeat_str(str, count) {
+    remember result = ""
+    remember i = 0
+    while i < count {
+        result = "${result}${str}"
+        i = i + 1
+    }
+    exhale result
+}
+
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+sigh append_list(list, item) {
+    remember result = []
+    for existing in list {
+        result = push(result, existing)
+    }
+    result = push(result, item)
+    exhale result
+}
+
+sigh to_string(value) {
+    if typeof(value) == "whisper" {
+        exhale value
+    }
+    import { str } from "core.lament"
+    exhale str(value)
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    color, red, green, yellow, blue, magenta, cyan, white, black,
+    bold, dim, italic, underline,
+    cursor_up, cursor_down, cursor_forward, cursor_back,
+    cursor_to, cursor_save, cursor_restore, cursor_hide, cursor_show,
+    clear_screen, clear_line, clear_line_after, clear_line_before,
+    scroll_up, scroll_down,
+    get_size, get_width, get_height,
+    progress_bar, ProgressBar_create,
+    Spinner_create,
+    prompt, confirm, select, password,
+    table
+}

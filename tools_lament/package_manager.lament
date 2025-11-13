@@ -1,0 +1,1069 @@
+# ============================================================================
+# LAMENT PACKAGE MANAGER - Poetry for the Soul
+# ============================================================================
+# A comprehensive package management system for the Lament programming language.
+# Handles installation, dependency resolution, versioning, and lock files.
+#
+# Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+# Ported from Python to Pure Lament
+# ============================================================================
+
+breathe "stdlib/collections"
+breathe "stdlib/files"
+breathe "stdlib/strings"
+breathe "stdlib/crypto"
+breathe "stdlib/datetime"
+
+# ============================================================================
+# SEMANTIC VERSIONING
+# ============================================================================
+
+sigh Version_new(major, minor, patch, prerelease, build) {
+    # Create a semantic version object
+    if prerelease == void { prerelease = "" }
+    if build == void { build = "" }
+
+    exhale {
+        "major": major,
+        "minor": minor,
+        "patch": patch,
+        "prerelease": prerelease,
+        "build": build
+    }
+}
+
+sigh Version_parse(version_str) {
+    # Parse a semantic version string like '1.2.3-alpha+build'
+    remember original_str = version_str
+
+    # Remove 'v' prefix if present
+    if string_starts_with(version_str, "v") {
+        version_str = string_slice(version_str, 1, string_length(version_str))
+    }
+
+    # Split on '+' for build metadata
+    remember build = ""
+    if string_contains(version_str, "+") {
+        remember parts = split_string(version_str, "+")
+        version_str = parts[0]
+        build = parts[1]
+    }
+
+    # Split on '-' for prerelease
+    remember prerelease = ""
+    if string_contains(version_str, "-") {
+        remember parts = split_string(version_str, "-")
+        version_str = parts[0]
+        prerelease = parts[1]
+    }
+
+    # Parse major.minor.patch
+    remember parts = split_string(version_str, ".")
+    if length_of(parts) != 3 {
+        raise "Invalid version string: ${original_str}"
+    }
+
+    remember major = string_to_int(parts[0])
+    remember minor = string_to_int(parts[1])
+    remember patch = string_to_int(parts[2])
+
+    exhale Version_new(major, minor, patch, prerelease, build)
+}
+
+sigh Version_to_string(version) {
+    # Convert version to string representation
+    remember result = "${version["major"]}.${version["minor"]}.${version["patch"]}"
+
+    if string_length(version["prerelease"]) > 0 {
+        result = "${result}-${version["prerelease"]}"
+    }
+
+    if string_length(version["build"]) > 0 {
+        result = "${result}+${version["build"]}"
+    }
+
+    exhale result
+}
+
+sigh Version_compare(v1, v2) {
+    # Compare two versions (-1 if v1 < v2, 0 if equal, 1 if v1 > v2)
+    if v1["major"] != v2["major"] {
+        exhale if v1["major"] < v2["major"] { -1 } else { 1 }
+    }
+
+    if v1["minor"] != v2["minor"] {
+        exhale if v1["minor"] < v2["minor"] { -1 } else { 1 }
+    }
+
+    if v1["patch"] != v2["patch"] {
+        exhale if v1["patch"] < v2["patch"] { -1 } else { 1 }
+    }
+
+    # Check prerelease
+    remember pre1 = v1["prerelease"]
+    remember pre2 = v2["prerelease"]
+
+    if string_length(pre1) == 0 and string_length(pre2) > 0 {
+        exhale 1  # Release > prerelease
+    }
+
+    if string_length(pre1) > 0 and string_length(pre2) == 0 {
+        exhale -1  # Prerelease < release
+    }
+
+    if pre1 < pre2 {
+        exhale -1
+    }
+
+    if pre1 > pre2 {
+        exhale 1
+    }
+
+    exhale 0
+}
+
+# ============================================================================
+# VERSION CONSTRAINT
+# ============================================================================
+
+sigh VersionConstraint_new(operator, version) {
+    # Create a version constraint object
+    exhale {
+        "operator": operator,
+        "version": version
+    }
+}
+
+sigh VersionConstraint_parse(constraint_str) {
+    # Parse a version constraint string
+    remember trimmed = string_trim(constraint_str)
+
+    if string_starts_with(trimmed, "^") {
+        remember ver_str = string_slice(trimmed, 1, string_length(trimmed))
+        remember version = Version_parse(ver_str)
+        exhale VersionConstraint_new("^", version)
+    }
+
+    if string_starts_with(trimmed, "~") {
+        remember ver_str = string_slice(trimmed, 1, string_length(trimmed))
+        remember version = Version_parse(ver_str)
+        exhale VersionConstraint_new("~", version)
+    }
+
+    if string_starts_with(trimmed, ">=") {
+        remember ver_str = string_slice(trimmed, 2, string_length(trimmed))
+        remember version = Version_parse(ver_str)
+        exhale VersionConstraint_new(">=", version)
+    }
+
+    if string_starts_with(trimmed, "<=") {
+        remember ver_str = string_slice(trimmed, 2, string_length(trimmed))
+        remember version = Version_parse(ver_str)
+        exhale VersionConstraint_new("<=", version)
+    }
+
+    if string_starts_with(trimmed, ">") {
+        remember ver_str = string_slice(trimmed, 1, string_length(trimmed))
+        remember version = Version_parse(ver_str)
+        exhale VersionConstraint_new(">", version)
+    }
+
+    if string_starts_with(trimmed, "<") {
+        remember ver_str = string_slice(trimmed, 1, string_length(trimmed))
+        remember version = Version_parse(ver_str)
+        exhale VersionConstraint_new("<", version)
+    }
+
+    if string_starts_with(trimmed, "=") {
+        remember ver_str = string_slice(trimmed, 1, string_length(trimmed))
+        remember version = Version_parse(ver_str)
+        exhale VersionConstraint_new("=", version)
+    }
+
+    # Exact version
+    remember version = Version_parse(trimmed)
+    exhale VersionConstraint_new("=", version)
+}
+
+sigh VersionConstraint_satisfies(constraint, version) {
+    # Check if a version satisfies this constraint
+    remember op = constraint["operator"]
+    remember constraint_ver = constraint["version"]
+    remember cmp = Version_compare(version, constraint_ver)
+
+    if op == "=" {
+        exhale cmp == 0
+    }
+
+    if op == ">" {
+        exhale cmp > 0
+    }
+
+    if op == "<" {
+        exhale cmp < 0
+    }
+
+    if op == ">=" {
+        exhale cmp >= 0
+    }
+
+    if op == "<=" {
+        exhale cmp <= 0
+    }
+
+    if op == "^" {
+        # Compatible with version (same major for 1.x.x, same minor for 0.x.x)
+        if constraint_ver["major"] > 0 {
+            exhale version["major"] == constraint_ver["major"] and cmp >= 0
+        } else {
+            exhale version["major"] == 0 and
+                  version["minor"] == constraint_ver["minor"] and
+                  cmp >= 0
+        }
+    }
+
+    if op == "~" {
+        # Approximately equivalent (same major and minor)
+        exhale version["major"] == constraint_ver["major"] and
+              version["minor"] == constraint_ver["minor"] and
+              cmp >= 0
+    }
+
+    exhale no
+}
+
+# ============================================================================
+# PACKAGE DEPENDENCY
+# ============================================================================
+
+sigh PackageDependency_new(name, constraint, optional) {
+    # Create a package dependency object
+    if optional == void { optional = no }
+
+    exhale {
+        "name": name,
+        "constraint": constraint,
+        "optional": optional
+    }
+}
+
+sigh PackageDependency_from_dict(data) {
+    # Create from dictionary
+    remember name = data["name"]
+    remember constraint = VersionConstraint_parse(data["version"])
+    remember optional = if dict_has_key(data, "optional") { data["optional"] } else { no }
+
+    exhale PackageDependency_new(name, constraint, optional)
+}
+
+sigh PackageDependency_to_dict(dep) {
+    # Convert to dictionary
+    remember constraint_str = "${dep["constraint"]["operator"]}${Version_to_string(dep["constraint"]["version"])}"
+
+    exhale {
+        "name": dep["name"],
+        "version": constraint_str,
+        "optional": dep["optional"]
+    }
+}
+
+# ============================================================================
+# PACKAGE METADATA
+# ============================================================================
+
+sigh PackageMetadata_new(name, version) {
+    # Create a package metadata object
+    exhale {
+        "name": name,
+        "version": version,
+        "description": "",
+        "author": "",
+        "license": "",
+        "homepage": "",
+        "repository": "",
+        "keywords": [],
+        "dependencies": [],
+        "dev_dependencies": [],
+        "entry_point": "",
+        "include": ["**/*.lament"],
+        "exclude": ["tests/**", "examples/**"],
+        "build_script": ""
+    }
+}
+
+sigh PackageMetadata_from_dict(data) {
+    # Create package metadata from dictionary
+    remember metadata = PackageMetadata_new(
+        data["name"],
+        Version_parse(data["version"])
+    )
+
+    if dict_has_key(data, "description") { metadata["description"] = data["description"] }
+    if dict_has_key(data, "author") { metadata["author"] = data["author"] }
+    if dict_has_key(data, "license") { metadata["license"] = data["license"] }
+    if dict_has_key(data, "homepage") { metadata["homepage"] = data["homepage"] }
+    if dict_has_key(data, "repository") { metadata["repository"] = data["repository"] }
+    if dict_has_key(data, "keywords") { metadata["keywords"] = data["keywords"] }
+    if dict_has_key(data, "entry_point") { metadata["entry_point"] = data["entry_point"] }
+    if dict_has_key(data, "include") { metadata["include"] = data["include"] }
+    if dict_has_key(data, "exclude") { metadata["exclude"] = data["exclude"] }
+    if dict_has_key(data, "build_script") { metadata["build_script"] = data["build_script"] }
+
+    # Parse dependencies
+    if dict_has_key(data, "dependencies") {
+        remember deps = []
+        for dep_data in data["dependencies"] {
+            remember dep = PackageDependency_from_dict(dep_data)
+            deps = append(deps, dep)
+        }
+        metadata["dependencies"] = deps
+    }
+
+    # Parse dev dependencies
+    if dict_has_key(data, "dev_dependencies") {
+        remember dev_deps = []
+        for dep_data in data["dev_dependencies"] {
+            remember dep = PackageDependency_from_dict(dep_data)
+            dev_deps = append(dev_deps, dep)
+        }
+        metadata["dev_dependencies"] = dev_deps
+    }
+
+    exhale metadata
+}
+
+sigh PackageMetadata_to_dict(metadata) {
+    # Convert metadata to dictionary
+    remember deps_list = []
+    for dep in metadata["dependencies"] {
+        deps_list = append(deps_list, PackageDependency_to_dict(dep))
+    }
+
+    remember dev_deps_list = []
+    for dep in metadata["dev_dependencies"] {
+        dev_deps_list = append(dev_deps_list, PackageDependency_to_dict(dep))
+    }
+
+    exhale {
+        "name": metadata["name"],
+        "version": Version_to_string(metadata["version"]),
+        "description": metadata["description"],
+        "author": metadata["author"],
+        "license": metadata["license"],
+        "homepage": metadata["homepage"],
+        "repository": metadata["repository"],
+        "keywords": metadata["keywords"],
+        "dependencies": deps_list,
+        "dev_dependencies": dev_deps_list,
+        "entry_point": metadata["entry_point"],
+        "include": metadata["include"],
+        "exclude": metadata["exclude"],
+        "build_script": metadata["build_script"]
+    }
+}
+
+sigh PackageMetadata_from_file(filepath) {
+    # Load package metadata from a file
+    remember content = read_file(filepath)
+    remember data = parse_json(content)
+    exhale PackageMetadata_from_dict(data)
+}
+
+sigh PackageMetadata_to_file(metadata, filepath) {
+    # Save package metadata to a file
+    remember data = PackageMetadata_to_dict(metadata)
+    remember json_str = to_json(data)
+    exhale write_file(filepath, json_str)
+}
+
+# ============================================================================
+# LOCK FILE
+# ============================================================================
+
+sigh LockedPackage_new(name, version, checksum, dependencies) {
+    # Create a locked package object
+    if dependencies == void { dependencies = [] }
+
+    exhale {
+        "name": name,
+        "version": version,
+        "checksum": checksum,
+        "dependencies": dependencies
+    }
+}
+
+sigh LockedPackage_from_dict(data) {
+    # Create from dictionary
+    remember name = data["name"]
+    remember version = Version_parse(data["version"])
+    remember checksum = data["checksum"]
+    remember dependencies = if dict_has_key(data, "dependencies") { data["dependencies"] } else { [] }
+
+    exhale LockedPackage_new(name, version, checksum, dependencies)
+}
+
+sigh LockedPackage_to_dict(pkg) {
+    # Convert to dictionary
+    exhale {
+        "name": pkg["name"],
+        "version": Version_to_string(pkg["version"]),
+        "checksum": pkg["checksum"],
+        "dependencies": pkg["dependencies"]
+    }
+}
+
+sigh LockFile_new() {
+    # Create a new lock file object
+    exhale {
+        "packages": {},
+        "created_at": datetime_now()
+    }
+}
+
+sigh LockFile_from_dict(data) {
+    # Create from dictionary
+    remember lock_file = LockFile_new()
+
+    if dict_has_key(data, "created_at") {
+        lock_file["created_at"] = data["created_at"]
+    }
+
+    if dict_has_key(data, "packages") {
+        remember packages = {}
+        remember pkg_dict = data["packages"]
+        remember keys = dict_keys(pkg_dict)
+
+        for key in keys {
+            remember pkg_data = pkg_dict[key]
+            remember pkg = LockedPackage_from_dict(pkg_data)
+            packages = dict_set(packages, key, pkg)
+        }
+
+        lock_file["packages"] = packages
+    }
+
+    exhale lock_file
+}
+
+sigh LockFile_to_dict(lock_file) {
+    # Convert to dictionary
+    remember packages_dict = {}
+    remember packages = lock_file["packages"]
+    remember keys = dict_keys(packages)
+
+    for key in keys {
+        remember pkg = packages[key]
+        remember pkg_dict = LockedPackage_to_dict(pkg)
+        packages_dict = dict_set(packages_dict, key, pkg_dict)
+    }
+
+    exhale {
+        "created_at": lock_file["created_at"],
+        "packages": packages_dict
+    }
+}
+
+sigh LockFile_from_file(filepath) {
+    # Load lock file from disk
+    if not file_exists(filepath) {
+        exhale LockFile_new()
+    }
+
+    remember content = read_file(filepath)
+    remember data = parse_json(content)
+    exhale LockFile_from_dict(data)
+}
+
+sigh LockFile_to_file(lock_file, filepath) {
+    # Save lock file to disk
+    remember data = LockFile_to_dict(lock_file)
+    remember json_str = to_json(data)
+    exhale write_file(filepath, json_str)
+}
+
+# ============================================================================
+# DEPENDENCY RESOLVER
+# ============================================================================
+
+sigh DependencyResolver_new(registry) {
+    # Create a dependency resolver
+    exhale {
+        "registry": registry
+    }
+}
+
+sigh DependencyResolver_resolve(resolver, root_package) {
+    # Resolve all dependencies for a package
+    remember registry = resolver["registry"]
+    remember versions = {}
+    remember visited = []
+    remember queue = []
+
+    # Add root package to queue
+    remember root_entry = {
+        "name": root_package["name"],
+        "version": root_package["version"],
+        "dependencies": root_package["dependencies"]
+    }
+    queue = append(queue, root_entry)
+
+    # Process queue
+    while length_of(queue) > 0 {
+        remember entry = queue[0]
+        queue = slice(queue, 1, length_of(queue))
+
+        remember pkg_name = entry["name"]
+        remember pkg_version = entry["version"]
+        remember dependencies = entry["dependencies"]
+
+        # Skip if already visited
+        remember already_visited = no
+        for visited_name in visited {
+            if visited_name == pkg_name {
+                already_visited = yes
+            }
+        }
+
+        if already_visited {
+            continue
+        }
+
+        visited = append(visited, pkg_name)
+        versions = dict_set(versions, pkg_name, pkg_version)
+
+        # Process dependencies
+        for dep in dependencies {
+            if dep["optional"] {
+                continue
+            }
+
+            # Find a version that satisfies the constraint
+            remember available_versions = Registry_get_versions(registry, dep["name"])
+
+            if length_of(available_versions) == 0 {
+                raise "Package not found: ${dep["name"]}"
+            }
+
+            # Filter versions that satisfy the constraint
+            remember compatible = []
+            for ver in available_versions {
+                if VersionConstraint_satisfies(dep["constraint"], ver) {
+                    compatible = append(compatible, ver)
+                }
+            }
+
+            if length_of(compatible) == 0 {
+                remember constraint_str = "${dep["constraint"]["operator"]}${Version_to_string(dep["constraint"]["version"])}"
+                raise "No version of ${dep["name"]} satisfies ${constraint_str}"
+            }
+
+            # Choose the latest compatible version
+            remember chosen_version = compatible[0]
+            for ver in compatible {
+                if Version_compare(ver, chosen_version) > 0 {
+                    chosen_version = ver
+                }
+            }
+
+            # Get metadata for this dependency
+            remember dep_metadata = Registry_get_package(registry, dep["name"], chosen_version)
+
+            if dep_metadata != void {
+                remember dep_entry = {
+                    "name": dep["name"],
+                    "version": chosen_version,
+                    "dependencies": dep_metadata["dependencies"]
+                }
+                queue = append(queue, dep_entry)
+            }
+        }
+    }
+
+    exhale versions
+}
+
+sigh DependencyResolver_topological_sort(resolver, versions) {
+    # Perform topological sort on resolved dependencies
+    remember registry = resolver["registry"]
+    remember in_degree = {}
+    remember graph = {}
+    remember result = []
+
+    # Initialize
+    remember keys = dict_keys(versions)
+    for pkg_name in keys {
+        in_degree = dict_set(in_degree, pkg_name, 0)
+        graph = dict_set(graph, pkg_name, [])
+    }
+
+    # Build graph
+    for pkg_name in keys {
+        remember version = versions[pkg_name]
+        remember metadata = Registry_get_package(registry, pkg_name, version)
+
+        if metadata != void {
+            for dep in metadata["dependencies"] {
+                if not dep["optional"] and dict_has_key(versions, dep["name"]) {
+                    # Add edge
+                    remember neighbors = graph[dep["name"]]
+                    neighbors = append(neighbors, pkg_name)
+                    graph = dict_set(graph, dep["name"], neighbors)
+
+                    # Increment in-degree
+                    remember degree = in_degree[pkg_name]
+                    in_degree = dict_set(in_degree, pkg_name, degree + 1)
+                }
+            }
+        }
+    }
+
+    # Kahn's algorithm
+    remember queue = []
+    for pkg_name in keys {
+        if in_degree[pkg_name] == 0 {
+            queue = append(queue, pkg_name)
+        }
+    }
+
+    while length_of(queue) > 0 {
+        remember node = queue[0]
+        queue = slice(queue, 1, length_of(queue))
+        result = append(result, node)
+
+        remember neighbors = graph[node]
+        for neighbor in neighbors {
+            remember degree = in_degree[neighbor]
+            degree = degree - 1
+            in_degree = dict_set(in_degree, neighbor, degree)
+
+            if degree == 0 {
+                queue = append(queue, neighbor)
+            }
+        }
+    }
+
+    if length_of(result) != length_of(keys) {
+        raise "Circular dependency detected"
+    }
+
+    exhale result
+}
+
+# ============================================================================
+# PACKAGE MANAGER
+# ============================================================================
+
+sigh PackageManager_new(base_dir, verify_signatures, skip_security) {
+    # Create a package manager
+    if base_dir == void { base_dir = current_directory() }
+    if verify_signatures == void { verify_signatures = yes }
+    if skip_security == void { skip_security = no }
+
+    remember packages_dir = path_join(base_dir, ".lament/packages")
+    remember cache_dir = path_join(base_dir, ".lament/cache")
+
+    # Create directories
+    if not dir_exists(packages_dir) {
+        create_directory(packages_dir)
+    }
+
+    if not dir_exists(cache_dir) {
+        create_directory(cache_dir)
+    }
+
+    remember package_file = path_join(base_dir, "package.lament")
+    remember lock_file = path_join(base_dir, "package-lock.lament")
+
+    breathe "registry"
+    remember registry = Registry_new(cache_dir)
+    remember resolver = DependencyResolver_new(registry)
+
+    exhale {
+        "base_dir": base_dir,
+        "packages_dir": packages_dir,
+        "cache_dir": cache_dir,
+        "package_file": package_file,
+        "lock_file": lock_file,
+        "verify_signatures": verify_signatures,
+        "skip_security": skip_security,
+        "registry": registry,
+        "resolver": resolver
+    }
+}
+
+sigh PackageManager_init(pm, name, version) {
+    # Initialize a new package
+    if version == void { version = "0.1.0" }
+
+    if file_exists(pm["package_file"]) {
+        confess "Package already initialized: ${pm["package_file"]}"
+        exhale no
+    }
+
+    remember metadata = PackageMetadata_new(name, Version_parse(version))
+    metadata["description"] = "A Lament package"
+    metadata["license"] = "MIT"
+
+    PackageMetadata_to_file(metadata, pm["package_file"])
+
+    confess "Initialized package: ${name} v${version}"
+    confess "Created: ${pm["package_file"]}"
+
+    exhale yes
+}
+
+sigh PackageManager_install(pm, package_spec, dev) {
+    # Install a package and its dependencies
+    if dev == void { dev = no }
+
+    # Load package metadata
+    if not file_exists(pm["package_file"]) {
+        confess "No package.lament found. Run 'lament-pkg init' first."
+        exhale no
+    }
+
+    remember metadata = PackageMetadata_from_file(pm["package_file"])
+
+    # If package_spec provided, add it to dependencies
+    if package_spec != void {
+        remember name = package_spec
+        remember constraint = VersionConstraint_parse("^1.0.0")
+
+        if string_contains(package_spec, "@") {
+            remember parts = split_string(package_spec, "@")
+            name = parts[0]
+            constraint = VersionConstraint_parse(parts[1])
+        }
+
+        remember dep = PackageDependency_new(name, constraint, no)
+
+        if dev {
+            metadata["dev_dependencies"] = append(metadata["dev_dependencies"], dep)
+        } else {
+            metadata["dependencies"] = append(metadata["dependencies"], dep)
+        }
+
+        PackageMetadata_to_file(metadata, pm["package_file"])
+
+        remember constraint_str = "${constraint["operator"]}${Version_to_string(constraint["version"])}"
+        remember dep_type = if dev { "dev " } else { "" }
+        confess "Added ${name} ${constraint_str} to ${dep_type}dependencies"
+    }
+
+    # Resolve all dependencies
+    confess "\nResolving dependencies..."
+
+    remember resolved = void
+    attempt {
+        resolved = DependencyResolver_resolve(pm["resolver"], metadata)
+    } catch error {
+        confess "Error resolving dependencies: ${error}"
+        exhale no
+    }
+
+    # Get installation order
+    remember install_order = DependencyResolver_topological_sort(pm["resolver"], resolved)
+
+    # Install packages
+    remember lock_file = LockFile_new()
+
+    for pkg_name in install_order {
+        if pkg_name == metadata["name"] {
+            continue
+        }
+
+        remember version = resolved[pkg_name]
+        confess "Installing ${pkg_name}@${Version_to_string(version)}..."
+
+        attempt {
+            remember checksum = PackageManager_install_package(pm, pkg_name, version)
+
+            # Get dependencies for lock file
+            remember pkg_metadata = Registry_get_package(pm["registry"], pkg_name, version)
+            remember dep_names = []
+
+            for dep in pkg_metadata["dependencies"] {
+                if not dep["optional"] {
+                    dep_names = append(dep_names, dep["name"])
+                }
+            }
+
+            remember locked_pkg = LockedPackage_new(pkg_name, version, checksum, dep_names)
+            lock_file["packages"] = dict_set(lock_file["packages"], pkg_name, locked_pkg)
+
+            confess "✓ Installed ${pkg_name}@${Version_to_string(version)}"
+        } catch error {
+            confess "✗ Failed to install ${pkg_name}@${Version_to_string(version)}: ${error}"
+        }
+    }
+
+    # Save lock file
+    LockFile_to_file(lock_file, pm["lock_file"])
+    remember num_packages = length_of(dict_keys(lock_file["packages"]))
+    confess "\nLock file saved: ${pm["lock_file"]}"
+    confess "Installed ${num_packages} packages"
+
+    exhale yes
+}
+
+sigh PackageManager_install_package(pm, name, version) {
+    # Install a single package and return its checksum
+    remember package_data = Registry_download_package(pm["registry"], name, version)
+
+    # Calculate checksum
+    remember checksum = sha256_hash(package_data)
+
+    # Create package directory
+    remember version_str = Version_to_string(version)
+    remember pkg_dir = path_join(pm["packages_dir"], "${name}-${version_str}")
+
+    if not dir_exists(pkg_dir) {
+        create_directory(pkg_dir)
+    }
+
+    # Save package data
+    remember package_file = path_join(pkg_dir, "package.tar.gz")
+    write_bytes(package_file, package_data)
+
+    # Create installed marker
+    remember marker_file = path_join(pkg_dir, "installed")
+    write_file(marker_file, datetime_now())
+
+    exhale checksum
+}
+
+sigh PackageManager_uninstall(pm, package_name) {
+    # Uninstall a package
+    if not file_exists(pm["package_file"]) {
+        confess "No package.lament found."
+        exhale no
+    }
+
+    remember metadata = PackageMetadata_from_file(pm["package_file"])
+
+    # Remove from dependencies
+    remember new_deps = []
+    for dep in metadata["dependencies"] {
+        if dep["name"] != package_name {
+            new_deps = append(new_deps, dep)
+        }
+    }
+    metadata["dependencies"] = new_deps
+
+    remember new_dev_deps = []
+    for dep in metadata["dev_dependencies"] {
+        if dep["name"] != package_name {
+            new_dev_deps = append(new_dev_deps, dep)
+        }
+    }
+    metadata["dev_dependencies"] = new_dev_deps
+
+    PackageMetadata_to_file(metadata, pm["package_file"])
+
+    # Remove from lock file
+    remember lock_file = LockFile_from_file(pm["lock_file"])
+
+    if dict_has_key(lock_file["packages"], package_name) {
+        lock_file["packages"] = dict_delete(lock_file["packages"], package_name)
+        LockFile_to_file(lock_file, pm["lock_file"])
+    }
+
+    # Remove package directory
+    remember pkg_dirs = list_directory(pm["packages_dir"])
+    for dir_name in pkg_dirs {
+        if string_starts_with(dir_name, "${package_name}-") {
+            remember dir_path = path_join(pm["packages_dir"], dir_name)
+            delete_directory(dir_path)
+            confess "Removed ${dir_name}"
+        }
+    }
+
+    confess "Uninstalled ${package_name}"
+    exhale yes
+}
+
+sigh PackageManager_update(pm, package_name) {
+    # Update packages to their latest compatible versions
+    if not file_exists(pm["package_file"]) {
+        confess "No package.lament found."
+        exhale no
+    }
+
+    remember metadata = PackageMetadata_from_file(pm["package_file"])
+
+    if package_name != void {
+        # Update specific package
+        confess "Updating ${package_name}..."
+
+        remember all_deps = metadata["dependencies"]
+        for dep in metadata["dev_dependencies"] {
+            all_deps = append(all_deps, dep)
+        }
+
+        for dep in all_deps {
+            if dep["name"] == package_name {
+                remember available = Registry_get_versions(pm["registry"], package_name)
+                remember compatible = []
+
+                for ver in available {
+                    if VersionConstraint_satisfies(dep["constraint"], ver) {
+                        compatible = append(compatible, ver)
+                    }
+                }
+
+                if length_of(compatible) > 0 {
+                    remember latest = compatible[0]
+                    for ver in compatible {
+                        if Version_compare(ver, latest) > 0 {
+                            latest = ver
+                        }
+                    }
+
+                    confess "Latest compatible version: ${Version_to_string(latest)}"
+                    PackageManager_install_package(pm, package_name, latest)
+                }
+            }
+        }
+    } else {
+        # Update all packages
+        confess "Updating all packages..."
+        PackageManager_install(pm, void, no)
+    }
+
+    exhale yes
+}
+
+sigh PackageManager_list_installed(pm) {
+    # List all installed packages
+    if not file_exists(pm["lock_file"]) {
+        confess "No packages installed."
+        exhale []
+    }
+
+    remember lock_file = LockFile_from_file(pm["lock_file"])
+    remember packages = lock_file["packages"]
+
+    if length_of(dict_keys(packages)) == 0 {
+        confess "No packages installed."
+        exhale []
+    }
+
+    confess "Installed packages:"
+    remember keys = dict_keys(packages)
+
+    for name in keys {
+        remember pkg = packages[name]
+        remember version_str = Version_to_string(pkg["version"])
+        confess "  ${name}@${version_str}"
+
+        if length_of(pkg["dependencies"]) > 0 {
+            remember deps_str = join_strings(pkg["dependencies"], ", ")
+            confess "    └─ dependencies: ${deps_str}"
+        }
+    }
+
+    exhale keys
+}
+
+sigh PackageManager_clean(pm) {
+    # Clean package cache
+    if dir_exists(pm["cache_dir"]) {
+        delete_directory(pm["cache_dir"])
+        create_directory(pm["cache_dir"])
+        confess "Cache cleaned"
+    }
+
+    exhale yes
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh main(args) {
+    # Main CLI entry point
+    if length_of(args) == 0 {
+        confess "Lament Package Manager - Poetry for the Soul"
+        confess ""
+        confess "Usage:"
+        confess "  lament-pkg init <name> [--version VERSION]"
+        confess "  lament-pkg install [PACKAGE] [--dev]"
+        confess "  lament-pkg uninstall <package>"
+        confess "  lament-pkg update [package]"
+        confess "  lament-pkg list"
+        confess "  lament-pkg clean"
+        exhale 0
+    }
+
+    remember command = args[0]
+    remember pm = PackageManager_new(void, yes, no)
+
+    if command == "init" {
+        if length_of(args) < 2 {
+            confess "Error: Package name required"
+            exhale 1
+        }
+
+        remember name = args[1]
+        remember version = "0.1.0"
+
+        # Parse --version flag
+        remember i = 2
+        while i < length_of(args) {
+            if args[i] == "--version" and i + 1 < length_of(args) {
+                version = args[i + 1]
+                i = i + 2
+            } else {
+                i = i + 1
+            }
+        }
+
+        PackageManager_init(pm, name, version)
+    }
+
+    if command == "install" {
+        remember package_spec = void
+        remember dev = no
+
+        if length_of(args) > 1 and not string_starts_with(args[1], "--") {
+            package_spec = args[1]
+        }
+
+        for arg in args {
+            if arg == "--dev" {
+                dev = yes
+            }
+        }
+
+        PackageManager_install(pm, package_spec, dev)
+    }
+
+    if command == "uninstall" {
+        if length_of(args) < 2 {
+            confess "Error: Package name required"
+            exhale 1
+        }
+
+        remember package_name = args[1]
+        PackageManager_uninstall(pm, package_name)
+    }
+
+    if command == "update" {
+        remember package_name = void
+        if length_of(args) > 1 {
+            package_name = args[1]
+        }
+
+        PackageManager_update(pm, package_name)
+    }
+
+    if command == "list" {
+        PackageManager_list_installed(pm)
+    }
+
+    if command == "clean" {
+        PackageManager_clean(pm)
+    }
+
+    exhale 0
+}

@@ -1,0 +1,670 @@
+# ============================================================================
+# LAMENT BUILD SYSTEM - Forging Emotional Executables
+# ============================================================================
+# A comprehensive build system for the Lament programming language.
+# Handles compilation, dependency linking, executable output, and incremental builds.
+#
+# Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+# Ported from Python to Pure Lament
+# ============================================================================
+
+breathe "stdlib/collections"
+breathe "stdlib/files"
+breathe "stdlib/strings"
+breathe "stdlib/crypto"
+breathe "stdlib/datetime"
+
+# ============================================================================
+# BUILD TARGETS
+# ============================================================================
+
+sigh BuildTarget_EXECUTABLE() { exhale "executable" }
+sigh BuildTarget_LIBRARY() { exhale "library" }
+sigh BuildTarget_MODULE() { exhale "module" }
+
+# ============================================================================
+# SOURCE FILE
+# ============================================================================
+
+sigh SourceFile_new(path, modified_time, checksum) {
+    # Create a source file object
+    exhale {
+        "path": path,
+        "modified_time": modified_time,
+        "checksum": checksum,
+        "dependencies": []
+    }
+}
+
+sigh SourceFile_from_path(path) {
+    # Create SourceFile from a path
+    if not file_exists(path) {
+        raise "Source file not found: ${path}"
+    }
+
+    remember content = read_bytes(path)
+    remember checksum = sha256_hash(content)
+    remember modified_time = file_modified_time(path)
+
+    exhale SourceFile_new(path, modified_time, checksum)
+}
+
+sigh SourceFile_needs_rebuild(source_file, cache) {
+    # Check if this file needs to be rebuilt
+    if not BuildCache_has_file(cache, source_file["path"]) {
+        exhale yes
+    }
+
+    remember cached = BuildCache_get_file(cache, source_file["path"])
+    if cached["checksum"] != source_file["checksum"] {
+        exhale yes
+    }
+
+    # Check if any dependency was modified
+    for dep in source_file["dependencies"] {
+        if BuildCache_has_file(cache, dep) {
+            remember dep_cached = BuildCache_get_file(cache, dep)
+            remember dep_current = SourceFile_from_path(dep)
+            if dep_current["checksum"] != dep_cached["checksum"] {
+                exhale yes
+            }
+        }
+    }
+
+    exhale no
+}
+
+# ============================================================================
+# BUILD CONFIGURATION
+# ============================================================================
+
+sigh BuildConfig_new(name, target, entry_point, output_dir) {
+    # Create a build configuration object
+    exhale {
+        "name": name,
+        "target": target,
+        "entry_point": entry_point,
+        "output_dir": output_dir,
+        "source_dirs": [],
+        "include_patterns": ["**/*.lament"],
+        "exclude_patterns": ["tests/**", "**/test_*.lament"],
+        "dependencies": [],
+        "optimization_level": 0,
+        "debug": no,
+        "warnings_as_errors": no,
+        "custom_flags": []
+    }
+}
+
+sigh BuildConfig_from_dict(data) {
+    # Create from dictionary
+    remember config = BuildConfig_new(
+        data["name"],
+        data["target"],
+        data["entry_point"],
+        data["output_dir"]
+    )
+
+    if dict_has_key(data, "source_dirs") { config["source_dirs"] = data["source_dirs"] }
+    if dict_has_key(data, "include_patterns") { config["include_patterns"] = data["include_patterns"] }
+    if dict_has_key(data, "exclude_patterns") { config["exclude_patterns"] = data["exclude_patterns"] }
+    if dict_has_key(data, "dependencies") { config["dependencies"] = data["dependencies"] }
+    if dict_has_key(data, "optimization_level") { config["optimization_level"] = data["optimization_level"] }
+    if dict_has_key(data, "debug") { config["debug"] = data["debug"] }
+    if dict_has_key(data, "warnings_as_errors") { config["warnings_as_errors"] = data["warnings_as_errors"] }
+    if dict_has_key(data, "custom_flags") { config["custom_flags"] = data["custom_flags"] }
+
+    exhale config
+}
+
+sigh BuildConfig_to_dict(config) {
+    # Convert to dictionary
+    exhale {
+        "name": config["name"],
+        "target": config["target"],
+        "entry_point": config["entry_point"],
+        "output_dir": config["output_dir"],
+        "source_dirs": config["source_dirs"],
+        "include_patterns": config["include_patterns"],
+        "exclude_patterns": config["exclude_patterns"],
+        "dependencies": config["dependencies"],
+        "optimization_level": config["optimization_level"],
+        "debug": config["debug"],
+        "warnings_as_errors": config["warnings_as_errors"],
+        "custom_flags": config["custom_flags"]
+    }
+}
+
+sigh BuildConfig_from_file(filepath) {
+    # Load build configuration from file
+    remember content = read_file(filepath)
+    remember data = parse_json(content)
+    exhale BuildConfig_from_dict(data)
+}
+
+sigh BuildConfig_to_file(config, filepath) {
+    # Save build configuration to file
+    remember data = BuildConfig_to_dict(config)
+    remember json_str = to_json(data)
+    write_file(filepath, json_str)
+}
+
+# ============================================================================
+# BUILD CACHE
+# ============================================================================
+
+sigh BuildCache_new(cache_file) {
+    # Create a build cache
+    remember cache = {
+        "cache_file": cache_file,
+        "files": {}
+    }
+
+    BuildCache_load(cache)
+    exhale cache
+}
+
+sigh BuildCache_load(cache) {
+    # Load cache from disk
+    if not file_exists(cache["cache_file"]) {
+        exhale void
+    }
+
+    attempt {
+        remember content = read_file(cache["cache_file"])
+        remember data = parse_json(content)
+        cache["files"] = data
+    } catch error {
+        confess "Warning: Could not load build cache: ${error}"
+        cache["files"] = {}
+    }
+}
+
+sigh BuildCache_save(cache) {
+    # Save cache to disk
+    remember dir = path_dirname(cache["cache_file"])
+    if not dir_exists(dir) {
+        create_directory(dir)
+    }
+
+    remember json_str = to_json(cache["files"])
+    write_file(cache["cache_file"], json_str)
+}
+
+sigh BuildCache_has_file(cache, path) {
+    # Check if file is in cache
+    remember path_str = if typeof(path) == "string" { path } else { path }
+    exhale dict_has_key(cache["files"], path_str)
+}
+
+sigh BuildCache_get_file(cache, path) {
+    # Get cached file info
+    remember path_str = if typeof(path) == "string" { path } else { path }
+    exhale cache["files"][path_str]
+}
+
+sigh BuildCache_update_file(cache, source_file) {
+    # Update cache with file info
+    remember path_str = source_file["path"]
+    cache["files"] = dict_set(cache["files"], path_str, source_file)
+}
+
+sigh BuildCache_clear(cache) {
+    # Clear the cache
+    cache["files"] = {}
+    if file_exists(cache["cache_file"]) {
+        delete_file(cache["cache_file"])
+    }
+}
+
+# ============================================================================
+# DEPENDENCY ANALYZER
+# ============================================================================
+
+sigh DependencyAnalyzer_new(source_dirs) {
+    # Create a dependency analyzer
+    exhale {
+        "source_dirs": source_dirs
+    }
+}
+
+sigh DependencyAnalyzer_analyze(analyzer, source_file) {
+    # Analyze a source file and return its dependencies
+    remember dependencies = []
+
+    attempt {
+        remember content = read_file(source_file)
+        remember lines = split_string(content, "\n")
+
+        for line in lines {
+            remember trimmed = string_trim(line)
+
+            if string_starts_with(trimmed, "breathe") {
+                # Extract module name - format: breathe "module_name"
+                remember parts = split_string(trimmed, "\"")
+
+                if length_of(parts) >= 2 {
+                    remember module_name = parts[1]
+                    remember dep_path = DependencyAnalyzer_resolve_import(analyzer, module_name)
+
+                    if dep_path != void {
+                        dependencies = append(dependencies, dep_path)
+                    }
+                }
+            }
+        }
+    } catch error {
+        confess "Warning: Could not analyze ${source_file}: ${error}"
+    }
+
+    exhale dependencies
+}
+
+sigh DependencyAnalyzer_resolve_import(analyzer, module_name) {
+    # Resolve an import to a file path
+    remember possible_names = [
+        "${module_name}.lament",
+        "${module_name}/main.lament",
+        module_name
+    ]
+
+    for source_dir in analyzer["source_dirs"] {
+        for name in possible_names {
+            remember path = path_join(source_dir, name)
+            if file_exists(path) {
+                exhale path
+            }
+        }
+    }
+
+    exhale void
+}
+
+# ============================================================================
+# COMPILER INTERFACE
+# ============================================================================
+
+sigh LamentCompiler_new(config) {
+    # Create a compiler interface
+    exhale {
+        "config": config
+    }
+}
+
+sigh LamentCompiler_compile_file(compiler, source_file, output_dir) {
+    # Compile a single source file
+    confess "  Compiling ${path_basename(source_file)}..."
+
+    attempt {
+        # Read source
+        remember source = read_file(source_file)
+
+        # Simplified compilation - in real implementation would use lexer/parser/bytecode
+        # For now, just create a marker file
+        remember basename = path_basename(source_file)
+        remember stem = string_replace(basename, ".lament", "")
+        remember output_file = path_join(output_dir, "${stem}.lmc")
+
+        if not dir_exists(output_dir) {
+            create_directory(output_dir)
+        }
+
+        # Create compiled marker
+        write_file(output_file, "# Compiled: ${source_file}\n# Time: ${datetime_now()}")
+
+        exhale { "success": yes, "message": "Compiled to ${output_file}" }
+    } catch error {
+        exhale { "success": no, "message": "Compilation failed: ${error}" }
+    }
+}
+
+sigh LamentCompiler_compile_project(compiler, source_files, output_dir) {
+    # Compile multiple source files
+    remember messages = []
+    remember success = yes
+
+    for source_file in source_files {
+        remember result = LamentCompiler_compile_file(compiler, source_file["path"], output_dir)
+        messages = append(messages, result["message"])
+
+        if not result["success"] {
+            success = no
+            if compiler["config"]["warnings_as_errors"] {
+                break
+            }
+        }
+    }
+
+    exhale { "success": success, "messages": messages }
+}
+
+# ============================================================================
+# LINKER
+# ============================================================================
+
+sigh Linker_new(config) {
+    # Create a linker
+    exhale {
+        "config": config
+    }
+}
+
+sigh Linker_link(linker, compiled_files, output_file) {
+    # Link compiled bytecode files into an executable
+    confess "  Linking ${length_of(compiled_files)} file(s)..."
+
+    attempt {
+        # Create executable wrapper (simplified)
+        remember wrapper = "#!/usr/bin/env lament\n"
+        wrapper = "${wrapper}# Lament Executable\n"
+        wrapper = "${wrapper}# Generated: ${datetime_now()}\n"
+        wrapper = "${wrapper}# Entry: ${linker["config"]["entry_point"]}\n\n"
+
+        for compiled_file in compiled_files {
+            wrapper = "${wrapper}# Include: ${compiled_file}\n"
+        }
+
+        remember output_dir = path_dirname(output_file)
+        if not dir_exists(output_dir) {
+            create_directory(output_dir)
+        }
+
+        write_file(output_file, wrapper)
+
+        # Make executable
+        shell_execute("chmod +x ${output_file}")
+
+        exhale { "success": yes, "message": "Created executable: ${output_file}" }
+    } catch error {
+        exhale { "success": no, "message": "Linking failed: ${error}" }
+    }
+}
+
+# ============================================================================
+# BUILD SYSTEM
+# ============================================================================
+
+sigh BuildSystem_new(project_dir) {
+    # Create a build system
+    if project_dir == void { project_dir = current_directory() }
+
+    remember build_dir = path_join(project_dir, "build")
+    remember cache_file = path_join(build_dir, ".build_cache")
+    remember config_file = path_join(project_dir, "build.lament")
+
+    # Load or create configuration
+    remember config = void
+    if file_exists(config_file) {
+        config = BuildConfig_from_file(config_file)
+    } else {
+        config = BuildConfig_new(
+            path_basename(project_dir),
+            BuildTarget_EXECUTABLE(),
+            "main.lament",
+            path_join(build_dir, "out")
+        )
+        config["source_dirs"] = [
+            path_join(project_dir, "src"),
+            project_dir
+        ]
+    }
+
+    # Initialize components
+    remember cache = BuildCache_new(cache_file)
+    remember analyzer = DependencyAnalyzer_new(config["source_dirs"])
+    remember compiler = LamentCompiler_new(config)
+    remember linker = Linker_new(config)
+
+    exhale {
+        "project_dir": project_dir,
+        "build_dir": build_dir,
+        "cache_file": cache_file,
+        "config_file": config_file,
+        "config": config,
+        "cache": cache,
+        "analyzer": analyzer,
+        "compiler": compiler,
+        "linker": linker
+    }
+}
+
+sigh BuildSystem_discover_sources(build_system) {
+    # Discover all source files in the project
+    remember source_files = []
+
+    for source_dir in build_system["config"]["source_dirs"] {
+        if not dir_exists(source_dir) {
+            continue
+        }
+
+        remember files = list_files_recursive(source_dir)
+
+        for file_path in files {
+            remember should_include = no
+
+            # Check include patterns
+            for pattern in build_system["config"]["include_patterns"] {
+                if string_ends_with(file_path, ".lament") {
+                    should_include = yes
+                }
+            }
+
+            # Check exclude patterns
+            for pattern in build_system["config"]["exclude_patterns"] {
+                if string_contains(file_path, "test") {
+                    should_include = no
+                }
+            }
+
+            if should_include {
+                remember source_file = SourceFile_from_path(file_path)
+                # Analyze dependencies
+                remember deps = DependencyAnalyzer_analyze(build_system["analyzer"], file_path)
+                source_file["dependencies"] = deps
+                source_files = append(source_files, source_file)
+            }
+        }
+    }
+
+    exhale source_files
+}
+
+sigh BuildSystem_build(build_system, incremental, clean, parallel, num_jobs) {
+    # Build the project
+    if incremental == void { incremental = yes }
+    if clean == void { clean = no }
+    if parallel == void { parallel = no }
+    if num_jobs == void { num_jobs = 4 }
+
+    confess "Building ${build_system["config"]["name"]}..."
+    remember start_time = time_now()
+
+    # Clean if requested
+    if clean {
+        BuildSystem_clean(build_system)
+    }
+
+    # Create output directory
+    if not dir_exists(build_system["config"]["output_dir"]) {
+        create_directory(build_system["config"]["output_dir"])
+    }
+
+    # Discover sources
+    confess "\nDiscovering source files..."
+    remember source_files = BuildSystem_discover_sources(build_system)
+    confess "Found ${length_of(source_files)} source file(s)"
+
+    # Determine which files need compilation
+    remember files_to_compile = []
+
+    if incremental {
+        for sf in source_files {
+            if SourceFile_needs_rebuild(sf, build_system["cache"]) {
+                files_to_compile = append(files_to_compile, sf)
+            }
+        }
+        confess "Need to compile ${length_of(files_to_compile)} file(s)"
+    } else {
+        files_to_compile = source_files
+    }
+
+    if length_of(files_to_compile) == 0 and incremental {
+        confess "Nothing to compile (use --clean to force rebuild)"
+        exhale yes
+    }
+
+    # Compile
+    confess "\nCompiling..."
+    remember result = LamentCompiler_compile_project(
+        build_system["compiler"],
+        files_to_compile,
+        build_system["config"]["output_dir"]
+    )
+
+    for msg in result["messages"] {
+        confess "  ${msg}"
+    }
+
+    if not result["success"] {
+        confess "\nBuild failed!"
+        exhale no
+    }
+
+    # Update cache
+    for source_file in files_to_compile {
+        BuildCache_update_file(build_system["cache"], source_file)
+    }
+    BuildCache_save(build_system["cache"])
+
+    # Link if building executable
+    if build_system["config"]["target"] == BuildTarget_EXECUTABLE() {
+        confess "\nLinking..."
+        remember compiled_files = list_files(build_system["config"]["output_dir"])
+        remember output_file = path_join(build_system["build_dir"], build_system["config"]["name"])
+
+        remember link_result = Linker_link(
+            build_system["linker"],
+            compiled_files,
+            output_file
+        )
+
+        confess "  ${link_result["message"]}"
+
+        if not link_result["success"] {
+            confess "\nBuild failed!"
+            exhale no
+        }
+    }
+
+    # Build summary
+    remember elapsed = time_elapsed(start_time)
+    confess "\nBuild completed successfully in ${elapsed}s"
+    exhale yes
+}
+
+sigh BuildSystem_clean(build_system) {
+    # Clean build artifacts
+    confess "Cleaning build artifacts..."
+
+    if dir_exists(build_system["build_dir"]) {
+        delete_directory(build_system["build_dir"])
+        confess "Removed ${build_system["build_dir"]}"
+    }
+
+    BuildCache_clear(build_system["cache"])
+    confess "Build cache cleared"
+}
+
+sigh BuildSystem_run(build_system) {
+    # Build and run the executable
+    if build_system["config"]["target"] != BuildTarget_EXECUTABLE() {
+        confess "Cannot run non-executable target"
+        exhale 1
+    }
+
+    # Build first
+    if not BuildSystem_build(build_system, yes, no, no, 4) {
+        exhale 1
+    }
+
+    # Run
+    remember executable = path_join(build_system["build_dir"], build_system["config"]["name"])
+
+    if not file_exists(executable) {
+        confess "Executable not found: ${executable}"
+        exhale 1
+    }
+
+    confess "\nRunning ${executable}..."
+    confess "============================================================"
+
+    attempt {
+        remember result = shell_execute(executable)
+        exhale result
+    } catch error {
+        confess "Error running executable: ${error}"
+        exhale 1
+    }
+}
+
+# ============================================================================
+# CLI INTERFACE
+# ============================================================================
+
+sigh main(args) {
+    # Main CLI entry point
+    if length_of(args) == 0 {
+        confess "Lament Build System - Forging Emotional Executables"
+        confess ""
+        confess "Usage:"
+        confess "  lament-build build [--clean] [--parallel] [-j JOBS]"
+        confess "  lament-build run"
+        confess "  lament-build clean"
+        exhale 0
+    }
+
+    remember command = args[0]
+    remember build_system = BuildSystem_new(void)
+
+    if command == "build" {
+        remember clean = no
+        remember parallel = no
+        remember incremental = yes
+        remember num_jobs = 4
+
+        # Parse flags
+        remember i = 1
+        while i < length_of(args) {
+            if args[i] == "--clean" {
+                clean = yes
+            }
+            if args[i] == "--parallel" {
+                parallel = yes
+            }
+            if args[i] == "--no-incremental" {
+                incremental = no
+            }
+            if args[i] == "-j" or args[i] == "--jobs" {
+                if i + 1 < length_of(args) {
+                    num_jobs = string_to_int(args[i + 1])
+                    i = i + 1
+                }
+            }
+            i = i + 1
+        }
+
+        remember success = BuildSystem_build(build_system, incremental, clean, parallel, num_jobs)
+        exhale if success { 0 } else { 1 }
+    }
+
+    if command == "run" {
+        exhale BuildSystem_run(build_system)
+    }
+
+    if command == "clean" {
+        BuildSystem_clean(build_system)
+        exhale 0
+    }
+
+    exhale 0
+}

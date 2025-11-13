@@ -1,0 +1,597 @@
+# ============================================================================
+# LAMENT PACKAGE FORMATS - MULTI-FORMAT PACKAGE GENERATION
+# ============================================================================
+# Generate packages in multiple formats: DEB, RPM, MSI, PKG, AppImage,
+# Flatpak, Snap, Homebrew formulas, and more.
+# ============================================================================
+
+import { read_file, write_file, file_exists, dir_exists, copy_file } from "stdlib/files.lament"
+import { parse_json, to_json } from "stdlib/network.lament"
+import { hash_sha256 } from "stdlib/crypto.lament"
+
+# ============================================================================
+# DEB PACKAGE GENERATOR (Debian/Ubuntu)
+# ============================================================================
+
+sigh DebPackageGenerator_create() {
+    # Create DEB package generator
+    remember generator = {
+        "create_package": void,
+        "generate_control": void,
+        "add_files": void
+    }
+
+    # Create DEB package
+    sigh create_package_fn(name, version, description, files, output_path) {
+        print("Creating DEB package: ${name}_${version}.deb")
+
+        # Create package directory structure
+        remember temp_dir = "/tmp/deb_${name}_${get_timestamp()}"
+        remember debian_dir = "${temp_dir}/DEBIAN"
+        make_dir(debian_dir)
+
+        # Generate control file
+        remember control = generate_control_fn(name, version, description)
+        write_file("${debian_dir}/control", control)
+
+        # Copy files
+        for file_entry in files {
+            remember src = file_entry["src"]
+            remember dest = file_entry["dest"]
+            remember full_dest = "${temp_dir}${dest}"
+
+            remember dest_dir = get_parent_dir(full_dest)
+            if not dir_exists(dest_dir) {
+                make_dir(dest_dir)
+            }
+
+            copy_file(src, full_dest)
+        }
+
+        # Build package
+        if output_path == void {
+            output_path = "${name}_${version}.deb"
+        }
+
+        remember cmd = "dpkg-deb --build ${temp_dir} ${output_path}"
+        attempt {
+            execute_command(cmd, void)
+            print("DEB package created: ${output_path}")
+        } catch error {
+            raise "Failed to create DEB package: ${error}"
+        }
+
+        # Cleanup
+        execute_command("rm -rf ${temp_dir}", void)
+
+        exhale output_path
+    }
+
+    # Generate control file
+    sigh generate_control_fn(name, version, description) {
+        remember control = "Package: ${name}\n"
+        control = "${control}Version: ${version}\n"
+        control = "${control}Section: misc\n"
+        control = "${control}Priority: optional\n"
+        control = "${control}Architecture: amd64\n"
+        control = "${control}Maintainer: Lament Packager\n"
+        control = "${control}Description: ${description}\n"
+
+        exhale control
+    }
+
+    # Assign methods
+    generator["create_package"] = create_package_fn
+    generator["generate_control"] = generate_control_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# RPM PACKAGE GENERATOR (RedHat/Fedora/CentOS)
+# ============================================================================
+
+sigh RpmPackageGenerator_create() {
+    # Create RPM package generator
+    remember generator = {
+        "create_package": void,
+        "generate_spec": void
+    }
+
+    # Create RPM package
+    sigh create_package_fn(name, version, description, files, output_path) {
+        print("Creating RPM package: ${name}-${version}.rpm")
+
+        # Setup RPM build environment
+        remember rpmbuild_dir = "/tmp/rpmbuild_${name}_${get_timestamp()}"
+        for subdir in ["BUILD", "RPMS", "SOURCES", "SPECS", "SRPMS"] {
+            make_dir("${rpmbuild_dir}/${subdir}")
+        }
+
+        # Generate spec file
+        remember spec = generate_spec_fn(name, version, description, files)
+        remember spec_file = "${rpmbuild_dir}/SPECS/${name}.spec"
+        write_file(spec_file, spec)
+
+        # Build RPM
+        remember cmd = "rpmbuild --define '_topdir ${rpmbuild_dir}' -bb ${spec_file}"
+        attempt {
+            execute_command(cmd, void)
+            print("RPM package created")
+        } catch error {
+            raise "Failed to create RPM package: ${error}"
+        }
+
+        # Copy output
+        if output_path == void {
+            output_path = "${name}-${version}.rpm"
+        }
+
+        remember rpm_file = "${rpmbuild_dir}/RPMS/x86_64/${name}-${version}-1.x86_64.rpm"
+        if file_exists(rpm_file) {
+            copy_file(rpm_file, output_path)
+        }
+
+        # Cleanup
+        execute_command("rm -rf ${rpmbuild_dir}", void)
+
+        exhale output_path
+    }
+
+    # Generate spec file
+    sigh generate_spec_fn(name, version, description, files) {
+        remember spec = "Name: ${name}\n"
+        spec = "${spec}Version: ${version}\n"
+        spec = "${spec}Release: 1\n"
+        spec = "${spec}Summary: ${description}\n"
+        spec = "${spec}License: MIT\n\n"
+        spec = "${spec}%description\n${description}\n\n"
+        spec = "${spec}%files\n"
+
+        for file_entry in files {
+            spec = "${spec}${file_entry["dest"]}\n"
+        }
+
+        exhale spec
+    }
+
+    # Assign methods
+    generator["create_package"] = create_package_fn
+    generator["generate_spec"] = generate_spec_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# MSI PACKAGE GENERATOR (Windows)
+# ============================================================================
+
+sigh MsiPackageGenerator_create() {
+    # Create MSI package generator
+    remember generator = {
+        "create_package": void,
+        "generate_wxs": void
+    }
+
+    # Create MSI package
+    sigh create_package_fn(name, version, description, files, output_path) {
+        print("Creating MSI package: ${name}-${version}.msi")
+
+        # Generate WiX source file
+        remember wxs = generate_wxs_fn(name, version, description, files)
+        remember wxs_file = "/tmp/${name}.wxs"
+        write_file(wxs_file, wxs)
+
+        # Compile with WiX
+        remember wixobj = "/tmp/${name}.wixobj"
+        remember cmd1 = "candle ${wxs_file} -out ${wixobj}"
+
+        if output_path == void {
+            output_path = "${name}-${version}.msi"
+        }
+
+        remember cmd2 = "light ${wixobj} -out ${output_path}"
+
+        attempt {
+            execute_command(cmd1, void)
+            execute_command(cmd2, void)
+            print("MSI package created: ${output_path}")
+        } catch error {
+            raise "Failed to create MSI package: ${error}"
+        }
+
+        exhale output_path
+    }
+
+    # Generate WiX source
+    sigh generate_wxs_fn(name, version, description, files) {
+        remember wxs = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        wxs = "${wxs}<Wix xmlns=\"http://schemas.microsoft.com/wix/2006/wi\">\n"
+        wxs = "${wxs}  <Product Id=\"*\" Name=\"${name}\" Language=\"1033\" Version=\"${version}\" Manufacturer=\"Lament\" UpgradeCode=\"*\">\n"
+        wxs = "${wxs}    <Package InstallerVersion=\"200\" Compressed=\"yes\" InstallScope=\"perMachine\" />\n"
+        wxs = "${wxs}    <MajorUpgrade DowngradeErrorMessage=\"A newer version is already installed.\" />\n"
+        wxs = "${wxs}    <MediaTemplate />\n"
+        wxs = "${wxs}    <Feature Id=\"ProductFeature\" Title=\"${name}\" Level=\"1\">\n"
+        wxs = "${wxs}      <ComponentGroupRef Id=\"ProductComponents\" />\n"
+        wxs = "${wxs}    </Feature>\n"
+        wxs = "${wxs}  </Product>\n"
+        wxs = "${wxs}  <Fragment>\n"
+        wxs = "${wxs}    <Directory Id=\"TARGETDIR\" Name=\"SourceDir\">\n"
+        wxs = "${wxs}      <Directory Id=\"ProgramFilesFolder\">\n"
+        wxs = "${wxs}        <Directory Id=\"INSTALLFOLDER\" Name=\"${name}\" />\n"
+        wxs = "${wxs}      </Directory>\n"
+        wxs = "${wxs}    </Directory>\n"
+        wxs = "${wxs}  </Fragment>\n"
+        wxs = "${wxs}  <Fragment>\n"
+        wxs = "${wxs}    <ComponentGroup Id=\"ProductComponents\" Directory=\"INSTALLFOLDER\">\n"
+
+        remember file_id = 0
+        for file_entry in files {
+            import { basename } from "stdlib/files.lament"
+            remember filename = basename(file_entry["src"])
+            wxs = "${wxs}      <Component Id=\"comp${file_id}\" Guid=\"*\">\n"
+            wxs = "${wxs}        <File Id=\"file${file_id}\" Source=\"${file_entry["src"]}\" KeyPath=\"yes\" />\n"
+            wxs = "${wxs}      </Component>\n"
+            file_id = file_id + 1
+        }
+
+        wxs = "${wxs}    </ComponentGroup>\n"
+        wxs = "${wxs}  </Fragment>\n"
+        wxs = "${wxs}</Wix>\n"
+
+        exhale wxs
+    }
+
+    # Assign methods
+    generator["create_package"] = create_package_fn
+    generator["generate_wxs"] = generate_wxs_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# APPIMAGE GENERATOR (Linux)
+# ============================================================================
+
+sigh AppImageGenerator_create() {
+    # Create AppImage generator
+    remember generator = {
+        "create_package": void
+    }
+
+    # Create AppImage
+    sigh create_package_fn(name, version, executable, files, output_path) {
+        print("Creating AppImage: ${name}-${version}.AppImage")
+
+        # Create AppDir structure
+        remember appdir = "/tmp/${name}.AppDir"
+        make_dir(appdir)
+        make_dir("${appdir}/usr/bin")
+
+        # Copy executable
+        copy_file(executable, "${appdir}/usr/bin/${name}")
+        make_executable("${appdir}/usr/bin/${name}")
+
+        # Create desktop file
+        remember desktop = "[Desktop Entry]\n"
+        desktop = "${desktop}Name=${name}\n"
+        desktop = "${desktop}Exec=${name}\n"
+        desktop = "${desktop}Type=Application\n"
+        desktop = "${desktop}Categories=Utility;\n"
+        write_file("${appdir}/${name}.desktop", desktop)
+
+        # Create AppRun script
+        remember apprun = "#!/bin/bash\n"
+        apprun = "${apprun}SELF=$(readlink -f \"$0\")\n"
+        apprun = "${apprun}HERE=${SELF%/*}\n"
+        apprun = "${apprun}export PATH=\"${HERE}/usr/bin:${PATH}\"\n"
+        apprun = "${apprun}\"${HERE}/usr/bin/${name}\" \"$@\"\n"
+        write_file("${appdir}/AppRun", apprun)
+        make_executable("${appdir}/AppRun")
+
+        # Copy additional files
+        if files != void {
+            for file_entry in files {
+                remember dest = "${appdir}${file_entry["dest"]}"
+                remember dest_dir = get_parent_dir(dest)
+                if not dir_exists(dest_dir) {
+                    make_dir(dest_dir)
+                }
+                copy_file(file_entry["src"], dest)
+            }
+        }
+
+        # Build AppImage
+        if output_path == void {
+            output_path = "${name}-${version}.AppImage"
+        }
+
+        remember cmd = "appimagetool ${appdir} ${output_path}"
+        attempt {
+            execute_command(cmd, void)
+            print("AppImage created: ${output_path}")
+        } catch error {
+            raise "Failed to create AppImage: ${error}"
+        }
+
+        # Cleanup
+        execute_command("rm -rf ${appdir}", void)
+
+        exhale output_path
+    }
+
+    # Assign methods
+    generator["create_package"] = create_package_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# SNAP PACKAGE GENERATOR (Linux)
+# ============================================================================
+
+sigh SnapPackageGenerator_create() {
+    # Create Snap package generator
+    remember generator = {
+        "create_package": void,
+        "generate_snapcraft_yaml": void
+    }
+
+    # Create Snap package
+    sigh create_package_fn(name, version, description, files, output_path) {
+        print("Creating Snap package: ${name}_${version}.snap")
+
+        # Create snap directory structure
+        remember snap_dir = "/tmp/snap_${name}_${get_timestamp()}"
+        make_dir("${snap_dir}/snap")
+
+        # Generate snapcraft.yaml
+        remember snapcraft = generate_snapcraft_yaml_fn(name, version, description)
+        write_file("${snap_dir}/snap/snapcraft.yaml", snapcraft)
+
+        # Copy files
+        remember install_dir = "${snap_dir}/install"
+        make_dir(install_dir)
+
+        for file_entry in files {
+            remember dest = "${install_dir}${file_entry["dest"]}"
+            remember dest_dir = get_parent_dir(dest)
+            if not dir_exists(dest_dir) {
+                make_dir(dest_dir)
+            }
+            copy_file(file_entry["src"], dest)
+        }
+
+        # Build snap
+        remember cmd = "cd ${snap_dir} && snapcraft"
+        attempt {
+            execute_command(cmd, void)
+            print("Snap package created")
+        } catch error {
+            raise "Failed to create Snap package: ${error}"
+        }
+
+        # Copy output
+        if output_path != void {
+            remember snap_file = "${snap_dir}/${name}_${version}_amd64.snap"
+            if file_exists(snap_file) {
+                copy_file(snap_file, output_path)
+            }
+        }
+
+        exhale output_path
+    }
+
+    # Generate snapcraft.yaml
+    sigh generate_snapcraft_yaml_fn(name, version, description) {
+        remember yaml = "name: ${name}\n"
+        yaml = "${yaml}version: '${version}'\n"
+        yaml = "${yaml}summary: ${description}\n"
+        yaml = "${yaml}description: ${description}\n"
+        yaml = "${yaml}base: core20\n"
+        yaml = "${yaml}confinement: strict\n"
+        yaml = "${yaml}grade: stable\n\n"
+        yaml = "${yaml}apps:\n"
+        yaml = "${yaml}  ${name}:\n"
+        yaml = "${yaml}    command: bin/${name}\n\n"
+        yaml = "${yaml}parts:\n"
+        yaml = "${yaml}  ${name}:\n"
+        yaml = "${yaml}    plugin: dump\n"
+        yaml = "${yaml}    source: install\n"
+
+        exhale yaml
+    }
+
+    # Assign methods
+    generator["create_package"] = create_package_fn
+    generator["generate_snapcraft_yaml"] = generate_snapcraft_yaml_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# FLATPAK GENERATOR (Linux)
+# ============================================================================
+
+sigh FlatpakGenerator_create() {
+    # Create Flatpak generator
+    remember generator = {
+        "create_package": void,
+        "generate_manifest": void
+    }
+
+    # Create Flatpak package
+    sigh create_package_fn(name, version, description, files, output_path) {
+        print("Creating Flatpak package: ${name}")
+
+        remember app_id = "org.lament.${name}"
+
+        # Generate manifest
+        remember manifest = generate_manifest_fn(app_id, name, version, description, files)
+        remember manifest_file = "/tmp/${app_id}.json"
+        write_file(manifest_file, to_json(manifest, yes))
+
+        # Build Flatpak
+        remember build_dir = "/tmp/flatpak_${name}"
+        remember repo_dir = "/tmp/flatpak_repo_${name}"
+
+        remember cmd = "flatpak-builder --repo=${repo_dir} ${build_dir} ${manifest_file}"
+        attempt {
+            execute_command(cmd, void)
+            print("Flatpak created")
+        } catch error {
+            raise "Failed to create Flatpak: ${error}"
+        }
+
+        exhale repo_dir
+    }
+
+    # Generate manifest
+    sigh generate_manifest_fn(app_id, name, version, description, files) {
+        exhale {
+            "app-id": app_id,
+            "runtime": "org.freedesktop.Platform",
+            "runtime-version": "21.08",
+            "sdk": "org.freedesktop.Sdk",
+            "command": name,
+            "modules": [
+                {
+                    "name": name,
+                    "buildsystem": "simple",
+                    "build-commands": [
+                        "install -D ${name} /app/bin/${name}"
+                    ]
+                }
+            ]
+        }
+    }
+
+    # Assign methods
+    generator["create_package"] = create_package_fn
+    generator["generate_manifest"] = generate_manifest_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# HOMEBREW FORMULA GENERATOR (macOS)
+# ============================================================================
+
+sigh HomebrewFormulaGenerator_create() {
+    # Create Homebrew formula generator
+    remember generator = {
+        "create_formula": void
+    }
+
+    # Create Homebrew formula
+    sigh create_formula_fn(name, version, description, url, sha256_hash, output_path) {
+        print("Creating Homebrew formula: ${name}.rb")
+
+        remember formula = "class ${capitalize(name)} < Formula\n"
+        formula = "${formula}  desc \"${description}\"\n"
+        formula = "${formula}  homepage \"https://lament-lang.org\"\n"
+        formula = "${formula}  url \"${url}\"\n"
+        formula = "${formula}  sha256 \"${sha256_hash}\"\n"
+        formula = "${formula}  license \"MIT\"\n\n"
+        formula = "${formula}  def install\n"
+        formula = "${formula}    bin.install \"${name}\"\n"
+        formula = "${formula}  end\n\n"
+        formula = "${formula}  test do\n"
+        formula = "${formula}    system \"#{bin}/${name}\", \"--version\"\n"
+        formula = "${formula}  end\n"
+        formula = "${formula}end\n"
+
+        if output_path == void {
+            output_path = "${name}.rb"
+        }
+
+        write_file(output_path, formula)
+        print("Homebrew formula created: ${output_path}")
+
+        exhale output_path
+    }
+
+    sigh capitalize(text) {
+        if string_length(text) == 0 {
+            exhale text
+        }
+
+        import { upper } from "stdlib/strings.lament"
+        remember first = upper(substring(text, 0, 1))
+        remember rest = substring(text, 1, string_length(text))
+        exhale "${first}${rest}"
+    }
+
+    # Assign methods
+    generator["create_formula"] = create_formula_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# PKG GENERATOR (macOS)
+# ============================================================================
+
+sigh PkgGenerator_create() {
+    # Create PKG generator for macOS
+    remember generator = {
+        "create_package": void
+    }
+
+    # Create PKG package
+    sigh create_package_fn(name, version, files, output_path) {
+        print("Creating PKG package: ${name}-${version}.pkg")
+
+        # Create package root
+        remember pkg_root = "/tmp/pkg_${name}_${get_timestamp()}"
+        make_dir(pkg_root)
+
+        # Copy files
+        for file_entry in files {
+            remember dest = "${pkg_root}${file_entry["dest"]}"
+            remember dest_dir = get_parent_dir(dest)
+            if not dir_exists(dest_dir) {
+                make_dir(dest_dir)
+            }
+            copy_file(file_entry["src"], dest)
+        }
+
+        # Build PKG
+        if output_path == void {
+            output_path = "${name}-${version}.pkg"
+        }
+
+        remember cmd = "pkgbuild --root ${pkg_root} --identifier org.lament.${name} --version ${version} ${output_path}"
+        attempt {
+            execute_command(cmd, void)
+            print("PKG package created: ${output_path}")
+        } catch error {
+            raise "Failed to create PKG: ${error}"
+        }
+
+        # Cleanup
+        execute_command("rm -rf ${pkg_root}", void)
+
+        exhale output_path
+    }
+
+    # Assign methods
+    generator["create_package"] = create_package_fn
+
+    exhale generator
+}
+
+# ============================================================================
+# EXPORT PUBLIC API
+# ============================================================================
+
+expose {
+    DebPackageGenerator_create,
+    RpmPackageGenerator_create,
+    MsiPackageGenerator_create,
+    AppImageGenerator_create,
+    SnapPackageGenerator_create,
+    FlatpakGenerator_create,
+    HomebrewFormulaGenerator_create,
+    PkgGenerator_create
+}
