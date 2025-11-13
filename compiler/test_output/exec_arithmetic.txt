@@ -1,0 +1,11 @@
+🧠 Neural module initialized in pure Python mode
+=== Arithmetic Test ===
+5 + 3 = 
+8
+5 - 3 = 
+2
+5 * 3 = 
+15
+5 / 3 = 
+1.6666666666666667
+Arithmetic test passed!

@@ -1,0 +1,35 @@
+{
+  "name": "library",
+  "description": "A reusable Lament library package",
+  "files": [
+    {
+      "source": "package.lament",
+      "destination": "package.lament"
+    },
+    {
+      "source": "src/{{snake_case(project_name)}}.lament",
+      "destination": "src/{{snake_case(project_name)}}.lament"
+    },
+    {
+      "source": "tests/test_{{snake_case(project_name)}}.lament",
+      "destination": "tests/test_{{snake_case(project_name)}}.lament"
+    },
+    {
+      "source": ".gitignore",
+      "destination": ".gitignore"
+    }
+  ],
+  "directories": [
+    "src",
+    "tests",
+    "docs",
+    "examples"
+  ],
+  "post_generation_hooks": [],
+  "required_variables": [
+    "project_name",
+    "description",
+    "author",
+    "version"
+  ]
+}

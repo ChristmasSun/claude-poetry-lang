@@ -1,0 +1,12 @@
+#!/usr/bin/env lament
+
+{{! Executable wrapper for {{project_name}} }}
+
+import sys
+import cli
+
+{{! Get command-line arguments (skip program name) }}
+burden args = sys.argv[1:]
+
+{{! Run CLI }}
+cli.main(args)

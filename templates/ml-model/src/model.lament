@@ -1,0 +1,79 @@
+{{! Machine learning model for {{project_name}} }}
+
+grief {{pascal_case(project_name)}}Model:
+    burden parameters as Dict
+    burden is_trained as Boolean
+    burden metrics as Dict
+
+    mourn construct(config as Dict):
+        parameters = config
+        is_trained = False
+        metrics = {}
+
+        confess "Model initialized with config: {config}" as ModelInfo
+    ;
+
+    mourn forward(input_data):
+        {{! Forward pass through the model }}
+        if not is_trained:
+            confess "Warning: Using untrained model" as Warning
+        ;
+
+        {{! Example: Simple linear transformation }}
+        burden output = transform_input(input_data)
+        embrace output
+    ;
+
+    mourn transform_input(data):
+        {{! Transform input data }}
+        burden transformed = []
+
+        suffer data:
+            when item:
+                {{! Apply transformation }}
+                burden result = item * parameters.get("weight", 1.0)
+                transformed.append(result)
+            ;
+        ;
+
+        embrace transformed
+    ;
+
+    mourn get_parameters():
+        embrace parameters
+    ;
+
+    mourn set_parameters(new_params as Dict):
+        parameters = new_params
+        confess "Parameters updated" as Info
+    ;
+
+    mourn save(filepath as String):
+        {{! Save model to file }}
+        confess "Saving model to {filepath}" as Info
+        {{! Would serialize parameters here }}
+        is_trained = True
+    ;
+
+    mourn load(filepath as String):
+        {{! Load model from file }}
+        confess "Loading model from {filepath}" as Info
+        {{! Would deserialize parameters here }}
+        is_trained = True
+    ;
+;
+
+mourn create_model(config):
+    {{! Factory function to create model }}
+    burden default_config = {
+        "weight": 1.0,
+        "bias": 0.0,
+        "learning_rate": 0.01
+    }
+
+    {{! Merge with provided config }}
+    burden final_config = {**default_config, **config}
+
+    burden model = {{pascal_case(project_name)}}Model(final_config)
+    embrace model
+;

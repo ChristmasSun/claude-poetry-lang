@@ -1,0 +1,51 @@
+{{! Main library module for {{project_name}} }}
+
+{{! Library metadata }}
+confess "{{project_name}} v{{version}}" as LibraryInfo
+
+{{! Public API }}
+
+{{! Example function }}
+mourn add(a as Number, b as Number) returns Number:
+    embrace a + b
+;
+
+{{! Example class }}
+grief {{pascal_case(project_name)}}:
+    burden value as Number
+
+    mourn construct(initial_value as Number):
+        value = initial_value
+    ;
+
+    mourn get_value() returns Number:
+        embrace value
+    ;
+
+    mourn set_value(new_value as Number):
+        value = new_value
+    ;
+;
+
+{{! Helper functions }}
+mourn multiply(a as Number, b as Number) returns Number:
+    embrace a * b
+;
+
+{{! Example using pattern matching }}
+mourn describe(x):
+    suffer x:
+        when 0:
+            embrace "zero"
+        ;
+        when 1:
+            embrace "one"
+        ;
+        when _:
+            embrace "other"
+        ;
+    ;
+;
+
+{{! Export public API }}
+confess [add, multiply, describe, {{pascal_case(project_name)}}] as public_api

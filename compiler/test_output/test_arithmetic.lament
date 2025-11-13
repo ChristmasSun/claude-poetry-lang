@@ -1,0 +1,21 @@
+# Test: Basic arithmetic
+confess "=== Arithmetic Test ==="
+
+remember x = 5
+remember y = 3
+
+remember sum = x + y
+remember diff = x - y
+remember prod = x * y
+remember quot = x / y
+
+confess "5 + 3 = "
+confess sum
+confess "5 - 3 = "
+confess diff
+confess "5 * 3 = "
+confess prod
+confess "5 / 3 = "
+confess quot
+
+confess "Arithmetic test passed!"

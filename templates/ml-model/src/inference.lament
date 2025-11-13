@@ -1,0 +1,112 @@
+{{! Inference module for {{project_name}} }}
+
+import model
+
+grief Predictor:
+    burden model
+    burden preprocessing_config as Dict
+
+    mourn construct(trained_model, config as Dict):
+        if not trained_model.is_trained:
+            confess "Warning: Model not trained yet" as Warning
+        ;
+
+        model = trained_model
+        preprocessing_config = config
+
+        confess "Predictor initialized" as Info
+    ;
+
+    mourn preprocess(input_data):
+        {{! Preprocess input data }}
+        burden processed = []
+
+        suffer input_data:
+            when item:
+                {{! Apply preprocessing }}
+                burden normalized = normalize(item)
+                processed.append(normalized)
+            ;
+        ;
+
+        embrace processed
+    ;
+
+    mourn normalize(value):
+        {{! Normalize value }}
+        burden mean = preprocessing_config.get("mean", 0.0)
+        burden std = preprocessing_config.get("std", 1.0)
+
+        burden normalized = (value - mean) / std
+        embrace normalized
+    ;
+
+    mourn predict(input_data):
+        {{! Make prediction on input data }}
+        burden preprocessed = preprocess(input_data)
+        burden prediction = model.forward(preprocessed)
+        burden postprocessed = postprocess(prediction)
+
+        embrace postprocessed
+    ;
+
+    mourn postprocess(output):
+        {{! Postprocess model output }}
+        burden processed = []
+
+        suffer output:
+            when item:
+                {{! Denormalize }}
+                burden denormalized = denormalize(item)
+                processed.append(denormalized)
+            ;
+        ;
+
+        embrace processed
+    ;
+
+    mourn denormalize(value):
+        {{! Denormalize value }}
+        burden mean = preprocessing_config.get("mean", 0.0)
+        burden std = preprocessing_config.get("std", 1.0)
+
+        burden denormalized = value * std + mean
+        embrace denormalized
+    ;
+
+    mourn predict_batch(batch_data):
+        {{! Make predictions on a batch of data }}
+        burden predictions = []
+
+        suffer batch_data:
+            when sample:
+                burden pred = predict(sample)
+                predictions.append(pred)
+            ;
+        ;
+
+        embrace predictions
+    ;
+;
+
+mourn create_predictor(trained_model, config):
+    burden default_config = {
+        "mean": 0.0,
+        "std": 1.0
+    }
+
+    burden final_config = {**default_config, **config}
+    burden predictor = Predictor(trained_model, final_config)
+    embrace predictor
+;
+
+mourn load_and_predict(model_path, input_data):
+    {{! Convenience function to load model and predict }}
+    burden loaded_model = model.create_model({})
+    loaded_model.load(model_path)
+
+    burden predictor = create_predictor(loaded_model, {})
+    burden prediction = predictor.predict(input_data)
+
+    embrace prediction
+;

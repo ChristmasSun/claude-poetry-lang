@@ -1,0 +1,39 @@
+{
+  "name": "application",
+  "description": "A standalone Lament application",
+  "files": [
+    {
+      "source": "package.lament",
+      "destination": "package.lament"
+    },
+    {
+      "source": "src/main.lament",
+      "destination": "src/main.lament"
+    },
+    {
+      "source": "src/config.lament",
+      "destination": "src/config.lament"
+    },
+    {
+      "source": "tests/test_main.lament",
+      "destination": "tests/test_main.lament"
+    },
+    {
+      "source": ".gitignore",
+      "destination": ".gitignore"
+    }
+  ],
+  "directories": [
+    "src",
+    "tests",
+    "data",
+    "logs"
+  ],
+  "post_generation_hooks": [],
+  "required_variables": [
+    "project_name",
+    "description",
+    "author",
+    "version"
+  ]
+}

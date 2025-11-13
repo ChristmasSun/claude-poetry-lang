@@ -19,8 +19,14 @@ Usage:
 
 Options:
     --output DIR    Output directory (default: ./docs)
-    --format FORMAT Output format: html, markdown (default: html)
+    --format FORMAT Output format: html, markdown, pdf (default: html)
     --title TITLE   Documentation title
+    --auto          Auto-generate docs from all modules
+    --serve         Start live documentation server
+    --port PORT     Server port (default: 8000)
+    --watch         Watch for file changes and regenerate
+    --deps          Generate module dependency graph
+    --search        Generate search index
 
 Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
 """
@@ -28,9 +34,17 @@ Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
 import sys
 import os
 import re
-from typing import List, Dict, Any, Optional
+import json
+import http.server
+import socketserver
+import threading
+import time
+from typing import List, Dict, Any, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
+from collections import defaultdict
+import fnmatch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -68,6 +82,16 @@ class ModuleDoc:
     functions: List[FunctionDoc] = field(default_factory=list)
     variables: List[VariableDoc] = field(default_factory=list)
     source_file: Optional[str] = None
+    imports: List[str] = field(default_factory=list)
+    exports: List[str] = field(default_factory=list)
+
+
+@dataclass
+class ProjectDoc:
+    """Documentation for entire project."""
+    title: str
+    modules: Dict[str, ModuleDoc] = field(default_factory=dict)
+    dependencies: Dict[str, List[str]] = field(default_factory=dict)
 
 
 class DocGenerator:
@@ -755,6 +779,530 @@ footer {
 
         print(f"Markdown documentation generated: {output_file}")
 
+    def generate_project_docs(self, project_path, output_dir, options=None):
+        """
+        Generate documentation for entire project.
+
+        Args:
+            project_path: Path to project directory
+            output_dir: Output directory
+            options: Optional generation options
+        """
+        options = options or {}
+        project_path = Path(project_path)
+
+        # Discover all Lament files
+        lament_files = list(project_path.rglob('*.lament'))
+
+        if not lament_files:
+            print(f"No Lament files found in {project_path}")
+            return
+
+        print(f"Generating documentation for {len(lament_files)} files...")
+
+        # Generate docs for each module
+        project_doc = ProjectDoc(title=options.get('title', 'Project Documentation'))
+
+        for file_path in lament_files:
+            try:
+                with open(file_path, 'r') as f:
+                    source = f.read()
+
+                lexer = Lexer(source)
+                tokens = lexer.tokenize()
+                parser = Parser(tokens)
+                ast = parser.parse()
+
+                module_doc = self.extract_docs(ast, source, str(file_path))
+                module_name = file_path.relative_to(project_path).as_posix()
+                project_doc.modules[module_name] = module_doc
+
+                # Extract imports for dependency graph
+                imports = self.extract_imports(source)
+                if imports:
+                    project_doc.dependencies[module_name] = imports
+
+                print(f"  Processed: {module_name}")
+
+            except Exception as e:
+                print(f"  Warning: Could not process {file_path}: {e}")
+
+        # Generate outputs
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Generate HTML overview
+        self.generate_project_html(project_doc, output_dir)
+
+        # Generate individual module pages
+        for module_name, module_doc in project_doc.modules.items():
+            module_output = os.path.join(output_dir, f"{module_name.replace('/', '_')}.html")
+            self.generate_html(module_doc, output_dir)
+
+        # Generate dependency graph if requested
+        if options.get('deps'):
+            self.generate_dependency_graph(project_doc, output_dir)
+
+        # Generate search index if requested
+        if options.get('search'):
+            self.generate_search_index(project_doc, output_dir)
+
+        print(f"\nProject documentation generated in {output_dir}")
+
+    def extract_imports(self, source):
+        """Extract import statements from source."""
+        imports = []
+        for line in source.split('\n'):
+            line = line.strip()
+            if line.startswith('import ') or line.startswith('use '):
+                # Extract module name
+                parts = line.split()
+                if len(parts) >= 2:
+                    imports.append(parts[1].strip('"\''))
+        return imports
+
+    def generate_project_html(self, project_doc, output_dir):
+        """Generate HTML overview page for project."""
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{project_doc.title}</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>{project_doc.title}</h1>
+            <p class="subtitle">Lament Language Documentation</p>
+        </header>
+
+        <nav>
+            <h2>Modules</h2>
+            <ul>
+"""
+
+        for module_name in sorted(project_doc.modules.keys()):
+            safe_name = module_name.replace('/', '_')
+            html += f'                <li><a href="{safe_name}.html">{module_name}</a></li>\n'
+
+        html += """
+            </ul>
+        </nav>
+
+        <main>
+            <section id="overview">
+                <h2>Project Overview</h2>
+                <p>Total Modules: {}</p>
+            </section>
+        </main>
+
+        <footer>
+            <p>Generated by Lament Documentation Generator</p>
+            <p>Generated on {}</p>
+        </footer>
+    </div>
+</body>
+</html>
+""".format(len(project_doc.modules), now)
+
+        with open(os.path.join(output_dir, 'index.html'), 'w') as f:
+            f.write(html)
+
+    def generate_dependency_graph(self, project_doc, output_dir):
+        """Generate module dependency graph."""
+        # Generate DOT format for graphviz
+        dot = "digraph Dependencies {\n"
+        dot += "  node [shape=box, style=filled, fillcolor=lightblue];\n"
+        dot += "  rankdir=LR;\n\n"
+
+        for module, deps in project_doc.dependencies.items():
+            safe_module = module.replace('/', '_').replace('.', '_')
+            for dep in deps:
+                safe_dep = dep.replace('/', '_').replace('.', '_')
+                dot += f'  "{safe_module}" -> "{safe_dep}";\n'
+
+        dot += "}\n"
+
+        dot_file = os.path.join(output_dir, 'dependencies.dot')
+        with open(dot_file, 'w') as f:
+            f.write(dot)
+
+        print(f"Dependency graph saved to {dot_file}")
+        print("Use 'dot -Tpng dependencies.dot -o dependencies.png' to generate image")
+
+        # Also generate JSON format
+        json_file = os.path.join(output_dir, 'dependencies.json')
+        with open(json_file, 'w') as f:
+            json.dump(project_doc.dependencies, f, indent=2)
+
+        print(f"Dependency data saved to {json_file}")
+
+    def generate_search_index(self, project_doc, output_dir):
+        """Generate search index for documentation."""
+        index = {
+            'modules': [],
+            'functions': [],
+            'variables': []
+        }
+
+        for module_name, module_doc in project_doc.modules.items():
+            # Index module
+            index['modules'].append({
+                'name': module_name,
+                'title': module_doc.title,
+                'description': module_doc.description,
+                'url': f"{module_name.replace('/', '_')}.html"
+            })
+
+            # Index functions
+            for func in module_doc.functions:
+                index['functions'].append({
+                    'name': func.name,
+                    'module': module_name,
+                    'params': func.params,
+                    'docstring': func.docstring,
+                    'url': f"{module_name.replace('/', '_')}.html#func-{func.name}"
+                })
+
+            # Index variables
+            for var in module_doc.variables:
+                index['variables'].append({
+                    'name': var.name,
+                    'module': module_name,
+                    'docstring': var.docstring,
+                    'url': f"{module_name.replace('/', '_')}.html#var-{var.name}"
+                })
+
+        # Save index
+        index_file = os.path.join(output_dir, 'search_index.json')
+        with open(index_file, 'w') as f:
+            json.dump(index, f, indent=2)
+
+        print(f"Search index generated: {index_file}")
+
+        # Generate search HTML interface
+        self.generate_search_html(output_dir)
+
+    def generate_search_html(self, output_dir):
+        """Generate search interface HTML."""
+        html = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Documentation Search</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .search-container {
+            padding: 20px;
+            background: #2a2a3e;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        #search-box {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.2em;
+            background: #1a1a2e;
+            border: 2px solid #ff6b9d;
+            color: #e0e0e0;
+            border-radius: 5px;
+        }
+        .search-results {
+            margin-top: 20px;
+        }
+        .result-item {
+            background: #2a2a3e;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #ffd93d;
+        }
+        .result-type {
+            color: #6fe7dd;
+            font-size: 0.9em;
+            text-transform: uppercase;
+        }
+        .result-name {
+            color: #ff6b9d;
+            font-size: 1.2em;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Documentation Search</h1>
+            <a href="index.html">Back to Index</a>
+        </header>
+
+        <div class="search-container">
+            <input type="text" id="search-box" placeholder="Search for functions, variables, modules...">
+        </div>
+
+        <div class="search-results" id="results"></div>
+    </div>
+
+    <script>
+        let searchIndex = null;
+
+        // Load search index
+        fetch('search_index.json')
+            .then(response => response.json())
+            .then(data => {
+                searchIndex = data;
+            });
+
+        // Search function
+        function search(query) {
+            if (!searchIndex || !query) {
+                document.getElementById('results').innerHTML = '';
+                return;
+            }
+
+            query = query.toLowerCase();
+            const results = [];
+
+            // Search functions
+            searchIndex.functions.forEach(func => {
+                if (func.name.toLowerCase().includes(query)) {
+                    results.push({
+                        type: 'function',
+                        name: func.name,
+                        module: func.module,
+                        description: func.docstring,
+                        url: func.url
+                    });
+                }
+            });
+
+            // Search variables
+            searchIndex.variables.forEach(variable => {
+                if (variable.name.toLowerCase().includes(query)) {
+                    results.push({
+                        type: 'variable',
+                        name: variable.name,
+                        module: variable.module,
+                        description: variable.docstring,
+                        url: variable.url
+                    });
+                }
+            });
+
+            // Search modules
+            searchIndex.modules.forEach(module => {
+                if (module.name.toLowerCase().includes(query) ||
+                    (module.title && module.title.toLowerCase().includes(query))) {
+                    results.push({
+                        type: 'module',
+                        name: module.name,
+                        description: module.description,
+                        url: module.url
+                    });
+                }
+            });
+
+            displayResults(results);
+        }
+
+        function displayResults(results) {
+            const container = document.getElementById('results');
+
+            if (results.length === 0) {
+                container.innerHTML = '<p>No results found</p>';
+                return;
+            }
+
+            let html = '<h2>Results (' + results.length + ')</h2>';
+
+            results.forEach(result => {
+                html += '<div class="result-item">';
+                html += '<div class="result-type">' + result.type + '</div>';
+                html += '<div class="result-name"><a href="' + result.url + '">' + result.name + '</a></div>';
+                if (result.module) {
+                    html += '<div>Module: ' + result.module + '</div>';
+                }
+                if (result.description) {
+                    html += '<div>' + result.description.substring(0, 200) + '...</div>';
+                }
+                html += '</div>';
+            });
+
+            container.innerHTML = html;
+        }
+
+        // Attach search event
+        document.getElementById('search-box').addEventListener('input', function(e) {
+            search(e.target.value);
+        });
+    </script>
+</body>
+</html>
+"""
+
+        with open(os.path.join(output_dir, 'search.html'), 'w') as f:
+            f.write(html)
+
+        print(f"Search interface generated: {os.path.join(output_dir, 'search.html')}")
+
+    def generate_pdf(self, docs, output_file):
+        """
+        Generate PDF documentation (requires wkhtmltopdf or similar).
+
+        Args:
+            docs: ModuleDoc
+            output_file: Output PDF file path
+        """
+        try:
+            # Generate HTML first
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                self.generate_html(docs, tmpdir)
+                html_file = os.path.join(tmpdir, 'index.html')
+
+                # Try to use wkhtmltopdf
+                import subprocess
+                result = subprocess.run(
+                    ['wkhtmltopdf', html_file, output_file],
+                    capture_output=True,
+                    text=True
+                )
+
+                if result.returncode == 0:
+                    print(f"PDF documentation generated: {output_file}")
+                else:
+                    print(f"Error generating PDF: {result.stderr}")
+                    print("Note: wkhtmltopdf must be installed for PDF generation")
+
+        except FileNotFoundError:
+            print("Error: wkhtmltopdf not found. Please install it for PDF generation.")
+        except Exception as e:
+            print(f"Error generating PDF: {e}")
+
+
+class DocServer:
+    """Live documentation server with auto-reload."""
+
+    def __init__(self, doc_dir, port=8000):
+        """
+        Initialize documentation server.
+
+        Args:
+            doc_dir: Documentation directory
+            port: Server port
+        """
+        self.doc_dir = doc_dir
+        self.port = port
+        self.server = None
+        self.thread = None
+
+    def start(self):
+        """Start the documentation server."""
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=self.doc_dir, **kwargs)
+
+            def log_message(self, format, *args):
+                # Suppress default logging
+                pass
+
+        self.server = socketserver.TCPServer(("", self.port), Handler)
+
+        def serve():
+            print(f"\nDocumentation server running at http://localhost:{self.port}")
+            print("Press Ctrl+C to stop\n")
+            self.server.serve_forever()
+
+        self.thread = threading.Thread(target=serve, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        """Stop the documentation server."""
+        if self.server:
+            self.server.shutdown()
+            print("Documentation server stopped")
+
+
+class DocWatcher:
+    """Watches for file changes and regenerates documentation."""
+
+    def __init__(self, source_path, output_dir, generator, options=None):
+        """
+        Initialize documentation watcher.
+
+        Args:
+            source_path: Path to watch
+            output_dir: Output directory
+            generator: DocGenerator instance
+            options: Generation options
+        """
+        self.source_path = Path(source_path)
+        self.output_dir = output_dir
+        self.generator = generator
+        self.options = options or {}
+        self.last_mtime = {}
+        self.running = False
+
+    def start(self):
+        """Start watching for changes."""
+        self.running = True
+        print(f"Watching {self.source_path} for changes...")
+
+        try:
+            while self.running:
+                changed = self.check_changes()
+                if changed:
+                    print(f"\nDetected changes, regenerating documentation...")
+                    self.regenerate()
+
+                time.sleep(1)  # Check every second
+
+        except KeyboardInterrupt:
+            print("\nStopping watcher...")
+            self.running = False
+
+    def check_changes(self):
+        """Check if any files have changed."""
+        changed = False
+
+        for file_path in self.source_path.rglob('*.lament'):
+            mtime = file_path.stat().st_mtime
+            if str(file_path) not in self.last_mtime:
+                self.last_mtime[str(file_path)] = mtime
+            elif mtime > self.last_mtime[str(file_path)]:
+                self.last_mtime[str(file_path)] = mtime
+                changed = True
+
+        return changed
+
+    def regenerate(self):
+        """Regenerate documentation."""
+        try:
+            if self.source_path.is_file():
+                with open(self.source_path, 'r') as f:
+                    source = f.read()
+
+                lexer = Lexer(source)
+                tokens = lexer.tokenize()
+                parser = Parser(tokens)
+                ast = parser.parse()
+
+                docs = self.generator.extract_docs(ast, source, str(self.source_path))
+                self.generator.generate_html(docs, self.output_dir)
+            else:
+                self.generator.generate_project_docs(
+                    self.source_path,
+                    self.output_dir,
+                    self.options
+                )
+
+            print("Documentation updated!")
+
+        except Exception as e:
+            print(f"Error regenerating documentation: {e}")
+
 
 def main():
     """CLI entry point for documentation generator."""
@@ -763,8 +1311,14 @@ def main():
         print("\nGenerate documentation for Lament programs.")
         print("\nOptions:")
         print("  --output DIR    Output directory (default: ./docs)")
-        print("  --format FORMAT Output format: html, markdown (default: html)")
+        print("  --format FORMAT Output format: html, markdown, pdf (default: html)")
         print("  --title TITLE   Documentation title")
+        print("  --auto          Auto-generate docs from all modules")
+        print("  --serve         Start live documentation server")
+        print("  --port PORT     Server port (default: 8000)")
+        print("  --watch         Watch for file changes and regenerate")
+        print("  --deps          Generate module dependency graph")
+        print("  --search        Generate search index")
         sys.exit(1)
 
     filename = sys.argv[1]
@@ -787,33 +1341,80 @@ def main():
         if idx + 1 < len(sys.argv):
             title = sys.argv[idx + 1]
 
+    port = 8000
+    if '--port' in sys.argv:
+        idx = sys.argv.index('--port')
+        if idx + 1 < len(sys.argv):
+            port = int(sys.argv[idx + 1])
+
+    auto_mode = '--auto' in sys.argv
+    serve = '--serve' in sys.argv
+    watch = '--watch' in sys.argv
+    deps = '--deps' in sys.argv
+    search = '--search' in sys.argv
+
+    options = {
+        'title': title,
+        'deps': deps,
+        'search': search
+    }
+
     try:
-        # Load and parse
-        with open(filename, 'r') as f:
-            source = f.read()
-
-        lexer = Lexer(source)
-        tokens = lexer.tokenize()
-
-        parser = Parser(tokens)
-        ast = parser.parse()
-
-        # Generate documentation
         generator = DocGenerator()
-        docs = generator.extract_docs(ast, source, filename)
 
-        if title:
-            docs.title = title
-
-        if output_format == 'html':
-            generator.generate_html(docs, output_dir)
-        elif output_format == 'markdown':
-            md_file = os.path.join(output_dir, 'README.md')
-            os.makedirs(output_dir, exist_ok=True)
-            generator.generate_markdown(docs, md_file)
+        if auto_mode:
+            # Auto-generate docs for entire project
+            generator.generate_project_docs(filename, output_dir, options)
         else:
-            print(f"Unknown format: {output_format}")
-            sys.exit(1)
+            # Generate docs for single file
+            with open(filename, 'r') as f:
+                source = f.read()
+
+            lexer = Lexer(source)
+            tokens = lexer.tokenize()
+            parser = Parser(tokens)
+            ast = parser.parse()
+
+            docs = generator.extract_docs(ast, source, filename)
+
+            if title:
+                docs.title = title
+
+            if output_format == 'html':
+                generator.generate_html(docs, output_dir)
+            elif output_format == 'markdown':
+                md_file = os.path.join(output_dir, 'README.md')
+                os.makedirs(output_dir, exist_ok=True)
+                generator.generate_markdown(docs, md_file)
+            elif output_format == 'pdf':
+                pdf_file = os.path.join(output_dir, 'documentation.pdf')
+                os.makedirs(output_dir, exist_ok=True)
+                generator.generate_pdf(docs, pdf_file)
+            else:
+                print(f"Unknown format: {output_format}")
+                sys.exit(1)
+
+        # Start server if requested
+        if serve:
+            server = DocServer(output_dir, port)
+            server.start()
+
+            if watch:
+                # Watch for changes
+                watcher = DocWatcher(filename, output_dir, generator, options)
+                watcher.start()
+            else:
+                # Just keep server running
+                try:
+                    while True:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    server.stop()
+
+        elif watch:
+            # Watch without server
+            watcher = DocWatcher(filename, output_dir, generator, options)
+            watcher.start()
 
     except FileNotFoundError:
         print(f"Error: File not found: {filename}")

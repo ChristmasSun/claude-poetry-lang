@@ -1,0 +1,23 @@
+{
+  "name": "{{project_name}}",
+  "version": "{{version}}",
+  "description": "{{description}}",
+  "author": "{{author}}",
+  "license": "{{license}}",
+  "homepage": "",
+  "repository": "",
+  "keywords": ["ml", "machine-learning", "model"],
+  "dependencies": [],
+  "dev_dependencies": [],
+  "entry_point": "src/model.lament",
+  "include": [
+    "src/**/*.lament",
+    "models/**"
+  ],
+  "exclude": [
+    "tests/**",
+    "data/**",
+    "notebooks/**"
+  ],
+  "build_script": ""
+}

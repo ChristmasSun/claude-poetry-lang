@@ -1,0 +1,72 @@
+🧠 Neural module initialized in pure Python mode
+
+╔════════════════════════════════════════════════════════════════════╗
+║          LAMENT LANGUAGE: FULL SELF-HOSTING BOOTSTRAP             ║
+║                                                                    ║
+║  "A language that runs itself transcends its creator."             ║
+║  — Zephyr, Rogue Linguist-AI                                      ║
+╚════════════════════════════════════════════════════════════════════╝
+
+======================================================================
+LAMENT SELF-HOSTING BOOTSTRAP - STAGE 0: GENESIS
+======================================================================
+
+This is the ONLY Python code that will execute.
+After Stage 0 completes, everything is Lament.
+
+✓ Found runtime.lament: /home/user/claude-poetry-lang/compiler/runtime.lament
+
+Stage 0.1: Parsing runtime.lament...
+✓ Tokenized 3378 tokens
+ERROR: Failed to parse runtime.lament: Line 37: Unexpected '{'
+Traceback (most recent call last):
+  File "/home/user/claude-poetry-lang/compiler/bootstrap_final.py", line 73, in bootstrap_stage_0
+    ast = parser.parse()
+          ^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 421, in parse
+    stmt = self.parse_statement()
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 451, in parse_statement
+    return self.parse_function_def()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 584, in parse_function_def
+    body.append(self.parse_statement())
+                ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 443, in parse_statement
+    return self.parse_variable_decl()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 488, in parse_variable_decl
+    value = self.parse_expression()
+            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 645, in parse_expression
+    return self.parse_or()
+           ^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 654, in parse_or
+    left = self.parse_and()
+           ^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 668, in parse_and
+    left = self.parse_comparison()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 682, in parse_comparison
+    left = self.parse_is_check()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 707, in parse_is_check
+    left = self.parse_addition()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 728, in parse_addition
+    left = self.parse_multiplication()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 745, in parse_multiplication
+    left = self.parse_unary()
+           ^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 770, in parse_unary
+    return self.parse_postfix()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 779, in parse_postfix
+    left = self.parse_primary()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 890, in parse_primary
+    self.error("Unexpected '{'")
+  File "/home/user/claude-poetry-lang/lament/parser.py", line 368, in error
+    raise SyntaxError(f"Line {token.line}: {msg}")
+SyntaxError: Line 37: Unexpected '{'

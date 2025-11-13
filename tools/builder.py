@@ -487,13 +487,16 @@ class BuildSystem:
                 return True
         return False
 
-    def build(self, incremental: bool = True, clean: bool = False) -> bool:
+    def build(self, incremental: bool = True, clean: bool = False,
+              parallel: bool = False, num_jobs: Optional[int] = None) -> bool:
         """
         Build the project.
 
         Args:
             incremental: Use incremental builds
             clean: Clean before building
+            parallel: Use parallel compilation
+            num_jobs: Number of parallel jobs (for parallel builds)
 
         Returns:
             True if build succeeded
@@ -527,15 +530,11 @@ class BuildSystem:
             print("Nothing to compile (use --clean to force rebuild)")
             return True
 
-        # Compile
-        print("\nCompiling...")
-        success, messages = self.compiler.compile_project(
-            files_to_compile,
-            self.config.output_dir
-        )
-
-        for msg in messages:
-            print(f"  {msg}")
+        # Compile (parallel or sequential)
+        if parallel and len(files_to_compile) > 1:
+            success = self._compile_parallel(files_to_compile, num_jobs)
+        else:
+            success = self._compile_sequential(files_to_compile)
 
         if not success:
             print("\nBuild failed!")
@@ -567,6 +566,38 @@ class BuildSystem:
         elapsed = time.time() - start_time
         print(f"\nBuild completed successfully in {elapsed:.2f}s")
         return True
+
+    def _compile_sequential(self, files_to_compile: List[SourceFile]) -> bool:
+        """Sequential compilation."""
+        print("\nCompiling...")
+        success, messages = self.compiler.compile_project(
+            files_to_compile,
+            self.config.output_dir
+        )
+
+        for msg in messages:
+            print(f"  {msg}")
+
+        return success
+
+    def _compile_parallel(self, files_to_compile: List[SourceFile],
+                         num_jobs: Optional[int] = None) -> bool:
+        """Parallel compilation."""
+        try:
+            from parallel_builder import ParallelCompiler
+
+            compiler = ParallelCompiler(self.config, num_jobs=num_jobs)
+            success, results = compiler.compile_parallel(
+                files_to_compile,
+                self.config.output_dir
+            )
+
+            return success
+
+        except ImportError as e:
+            print(f"Error: Parallel compilation not available: {e}")
+            print("Falling back to sequential compilation...")
+            return self._compile_sequential(files_to_compile)
 
     def clean(self) -> None:
         """Clean build artifacts."""
@@ -617,15 +648,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  lament-build build                 Build the project
-  lament-build build --clean         Clean and build
-  lament-build build --no-incremental  Full rebuild
-  lament-build run                   Build and run
-  lament-build clean                 Clean build artifacts
+  lament-build build                     Build the project
+  lament-build build --clean             Clean and build
+  lament-build build --parallel          Parallel compilation
+  lament-build build --parallel -j 8     Parallel with 8 jobs
+  lament-build build --no-incremental    Full rebuild
+  lament-build watch                     Watch mode (auto-rebuild)
+  lament-build server start              Start build server
+  lament-build run                       Build and run
+  lament-build clean                     Clean build artifacts
         """
     )
 
-    parser.add_argument('--version', action='version', version='lament-build 1.0.0')
+    parser.add_argument('--version', action='version', version='lament-build 2.0.0')
 
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
 
@@ -634,6 +669,31 @@ Examples:
     build_parser.add_argument('--clean', action='store_true', help='Clean before building')
     build_parser.add_argument('--no-incremental', action='store_true',
                              help='Disable incremental builds')
+    build_parser.add_argument('--parallel', action='store_true',
+                             help='Use parallel compilation')
+    build_parser.add_argument('-j', '--jobs', type=int, default=None,
+                             help='Number of parallel jobs (default: CPU count)')
+
+    # Watch command
+    watch_parser = subparsers.add_parser('watch', help='Watch mode - auto-rebuild on changes')
+    watch_parser.add_argument('--debounce', type=float, default=0.5,
+                             help='Debounce delay in seconds (default: 0.5)')
+    watch_parser.add_argument('--parallel', action='store_true',
+                             help='Use parallel compilation in watch mode')
+    watch_parser.add_argument('-j', '--jobs', type=int, default=None,
+                             help='Number of parallel jobs')
+
+    # Server command
+    server_parser = subparsers.add_parser('server', help='Build server commands')
+    server_subparsers = server_parser.add_subparsers(dest='server_command')
+
+    start_parser = server_subparsers.add_parser('start', help='Start build server')
+    start_parser.add_argument('--workers', type=int, default=2,
+                             help='Number of worker threads (default: 2)')
+    start_parser.add_argument('--host', type=str, default='localhost',
+                             help='Server host (default: localhost)')
+    start_parser.add_argument('--port', type=int, default=8765,
+                             help='Server port (default: 8765)')
 
     # Run command
     subparsers.add_parser('run', help='Build and run the project')
@@ -654,9 +714,57 @@ Examples:
     if args.command == 'build':
         success = build_system.build(
             incremental=not args.no_incremental,
-            clean=args.clean
+            clean=args.clean,
+            parallel=args.parallel,
+            num_jobs=args.jobs
         )
         sys.exit(0 if success else 1)
+
+    elif args.command == 'watch':
+        try:
+            from watch_mode import WatchMode
+
+            # Configure parallel builds for watch mode
+            if args.parallel:
+                # Monkey-patch build to use parallel by default
+                original_build = build_system.build
+                def parallel_build(incremental=True, clean=False, **kwargs):
+                    return original_build(
+                        incremental=incremental,
+                        clean=clean,
+                        parallel=True,
+                        num_jobs=args.jobs
+                    )
+                build_system.build = parallel_build
+
+            watch_mode = WatchMode(build_system, debounce_delay=args.debounce)
+            watch_mode.start()
+
+        except ImportError as e:
+            print(f"Error: Watch mode not available: {e}")
+            print("Make sure watch_mode.py is in the tools directory")
+            sys.exit(1)
+
+    elif args.command == 'server':
+        if not args.server_command:
+            server_parser.print_help()
+            return
+
+        try:
+            from build_server import BuildServer
+
+            if args.server_command == 'start':
+                server = BuildServer(
+                    num_workers=args.workers,
+                    host=args.host,
+                    port=args.port
+                )
+                server.start()
+
+        except ImportError as e:
+            print(f"Error: Build server not available: {e}")
+            print("Make sure build_server.py is in the tools directory")
+            sys.exit(1)
 
     elif args.command == 'run':
         sys.exit(build_system.run())

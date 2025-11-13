@@ -1,0 +1,5 @@
+🧠 Neural module initialized in pure Python mode
+=== Function Test ===
+factorial(5) = 
+120
+Function test passed!

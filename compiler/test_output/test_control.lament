@@ -1,0 +1,18 @@
+# Test: Control flow
+confess "=== Control Flow Test ==="
+
+remember x = 10
+
+if x > 5 {
+    confess "x is greater than 5"
+} else {
+    confess "x is not greater than 5"
+}
+
+remember i = 0
+while i < 3 {
+    confess i
+    i = i + 1
+}
+
+confess "Control flow test passed!"

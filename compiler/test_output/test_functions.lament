@@ -1,0 +1,15 @@
+# Test: Functions
+confess "=== Function Test ==="
+
+sigh factorial(n) {
+    if n <= 1 {
+        exhale 1
+    }
+    exhale n * factorial(n - 1)
+}
+
+remember result = factorial(5)
+confess "factorial(5) = "
+confess result
+
+confess "Function test passed!"

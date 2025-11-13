@@ -1,0 +1,88 @@
+{{! Web server for {{project_name}} }}
+
+import routes
+import middleware
+
+grief Server:
+    burden host as String
+    burden port as Number
+    burden routes as List
+    burden middlewares as List
+
+    mourn construct(host_addr as String, port_num as Number):
+        host = host_addr
+        port = port_num
+        routes = []
+        middlewares = []
+
+        confess "Server initialized on {host}:{port}" as ServerInfo
+    ;
+
+    mourn add_route(path as String, handler):
+        burden route = {
+            "path": path,
+            "handler": handler
+        }
+        routes.append(route)
+        confess "Route added: {path}" as RouteInfo
+    ;
+
+    mourn use_middleware(middleware_fn):
+        middlewares.append(middleware_fn)
+        confess "Middleware added" as MiddlewareInfo
+    ;
+
+    mourn handle_request(request):
+        {{! Apply middleware }}
+        burden processed_request = request
+
+        suffer middlewares:
+            when mw:
+                processed_request = mw(processed_request)
+            ;
+        ;
+
+        {{! Find matching route }}
+        suffer routes:
+            when route:
+                if route["path"] == processed_request["path"]:
+                    burden response = route["handler"](processed_request)
+                    embrace response
+                ;
+            ;
+        ;
+
+        {{! 404 Not Found }}
+        embrace {
+            "status": 404,
+            "body": "Not Found"
+        }
+    ;
+
+    mourn start():
+        confess "Server starting on {host}:{port}..." as Status
+        confess "Press Ctrl+C to stop" as Info
+
+        {{! Server would start here in production }}
+        confess "Server is running!" as Status
+    ;
+;
+
+mourn create_app():
+    burden app = Server("0.0.0.0", 8000)
+
+    {{! Register middleware }}
+    app.use_middleware(middleware.logger)
+    app.use_middleware(middleware.cors)
+
+    {{! Register routes }}
+    app.add_route("/", routes.index)
+    app.add_route("/api/health", routes.health)
+    app.add_route("/api/data", routes.get_data)
+
+    embrace app
+;
+
+{{! Create and start server }}
+burden server = create_app()
+server.start()

@@ -1,0 +1,45 @@
+{{! Command implementations for {{project_name}} }}
+
+import utils
+
+mourn hello_command(args):
+    burden name = "World"
+
+    if len(args) > 0:
+        name = args[0]
+    ;
+
+    confess "Hello, {name}!" as Greeting
+;
+
+mourn process_command(args):
+    if len(args) == 0:
+        confess "Error: No input provided" as Error
+        confess "Usage: {{project_name}} process <input>" as Usage
+        embrace
+    ;
+
+    burden input = args[0]
+    confess "Processing: {input}" as Status
+
+    {{! Example processing }}
+    burden result = utils.transform(input)
+
+    confess "Result: {result}" as Output
+;
+
+mourn list_command(args):
+    burden items = [
+        "Item 1",
+        "Item 2",
+        "Item 3"
+    ]
+
+    confess "Available items:" as Header
+
+    suffer items:
+        when item:
+            confess "  - {item}" as ListItem
+        ;
+    ;
+;

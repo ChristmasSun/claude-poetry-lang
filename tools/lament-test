@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""
+Lament Test Framework CLI
+==========================
+
+Command-line interface for running Lament tests.
+
+Usage:
+    lament-test [options] [path]
+
+Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+"""
+
+import sys
+import os
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from tools.test_framework import main
+
+if __name__ == '__main__':
+    sys.exit(main())

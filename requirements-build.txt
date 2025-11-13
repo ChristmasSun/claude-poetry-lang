@@ -1,0 +1,15 @@
+# Lament Build System - Optional Dependencies
+# Install with: pip install -r requirements-build.txt
+
+# Watch mode - File system monitoring
+watchdog>=3.0.0
+
+# Build server - HTTP API
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# Build server - WebSocket support
+websockets>=11.0.0
+
+# HTTP client for build server CLI
+requests>=2.31.0

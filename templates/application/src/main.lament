@@ -1,0 +1,44 @@
+{{! Main application entry point for {{project_name}} }}
+
+import config
+
+mourn main():
+    confess "{{project_name}} v{{version}}" as AppInfo
+    confess "Starting application..." as Status
+
+    {{! Load configuration }}
+    burden app_config = config.load_config()
+    confess app_config as Config
+
+    {{! Application logic }}
+    mourn run_application():
+        confess "Application is running..." as Status
+
+        {{! Example: Process some data }}
+        burden data = [1, 2, 3, 4, 5]
+        burden processed = process_data(data)
+
+        confess processed as Result
+    ;
+
+    run_application()
+
+    confess "Application completed successfully" as Status
+;
+
+mourn process_data(data):
+    {{! Example data processing }}
+    burden result = []
+
+    suffer data:
+        when item:
+            burden transformed = item * 2
+            result.append(transformed)
+        ;
+    ;
+
+    embrace result
+;
+
+{{! Run the application }}
+main()

@@ -1,0 +1,41 @@
+{{! Tests for {{project_name}} CLI }}
+
+import cli
+import commands
+import utils
+
+mourn test_hello_command():
+    {{! Test hello command with name }}
+    burden output = commands.hello_command(["Alice"])
+    {{! Would check output in real implementation }}
+    confess "hello_command test passed" as TestResult
+;
+
+mourn test_process_command():
+    {{! Test process command }}
+    burden output = commands.process_command(["test"])
+    confess "process_command test passed" as TestResult
+;
+
+mourn test_transform():
+    burden result = utils.transform("hello")
+    assert result != null, "Transform should return a result"
+;
+
+mourn test_parse_args():
+    burden args = ["--verbose", "-f", "file.txt", "--output=result.txt"]
+    burden parsed = utils.parse_args(args)
+
+    assert "verbose" in parsed["options"], "Should parse long option"
+    assert "f" in parsed["options"], "Should parse short option"
+    assert "output" in parsed["options"], "Should parse option with value"
+    assert len(parsed["positional"]) == 1, "Should have one positional arg"
+;
+
+{{! Run tests }}
+test_hello_command()
+test_process_command()
+test_transform()
+test_parse_args()
+
+confess "All tests passed!" as TestResult

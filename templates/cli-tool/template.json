@@ -1,0 +1,47 @@
+{
+  "name": "cli-tool",
+  "description": "A Lament command-line tool",
+  "files": [
+    {
+      "source": "package.lament",
+      "destination": "package.lament"
+    },
+    {
+      "source": "src/cli.lament",
+      "destination": "src/cli.lament"
+    },
+    {
+      "source": "src/commands.lament",
+      "destination": "src/commands.lament"
+    },
+    {
+      "source": "src/utils.lament",
+      "destination": "src/utils.lament"
+    },
+    {
+      "source": "bin/{{kebab_case(project_name)}}",
+      "destination": "bin/{{kebab_case(project_name)}}",
+      "executable": true
+    },
+    {
+      "source": "tests/test_cli.lament",
+      "destination": "tests/test_cli.lament"
+    },
+    {
+      "source": ".gitignore",
+      "destination": ".gitignore"
+    }
+  ],
+  "directories": [
+    "src",
+    "bin",
+    "tests"
+  ],
+  "post_generation_hooks": [],
+  "required_variables": [
+    "project_name",
+    "description",
+    "author",
+    "version"
+  ]
+}

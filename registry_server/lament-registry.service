@@ -1,0 +1,47 @@
+# Systemd service file for Lament Registry Server
+# Copy to /etc/systemd/system/lament-registry.service
+
+[Unit]
+Description=Lament Registry Server - The Vault of Souls
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=lament
+Group=lament
+WorkingDirectory=/opt/lament/registry_server
+
+# Environment variables
+Environment="DATABASE_URL=postgresql://lament:password@localhost/lament_registry"
+Environment="STORAGE_BACKEND=filesystem"
+Environment="STORAGE_PATH=/var/lament/storage"
+Environment="REQUIRE_AUTHENTICATION=true"
+Environment="ENABLE_RATE_LIMITING=true"
+Environment="LOG_LEVEL=INFO"
+
+# Start command
+ExecStart=/opt/lament/registry_server/venv/bin/python -m registry_server.server start --host 0.0.0.0 --port 8080
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lament/storage /opt/lament/registry_server/logs
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=2G
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lament-registry
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,89 @@
+/*
+ * Basic Test Examples
+ * ===================
+ *
+ * Demonstrates basic assertion testing in Lament.
+ */
+
+# Test basic assertions
+sigh test_equality() {
+    lament a = 5
+    lament b = 5
+
+    # This would use assert from testing library
+    lament equal = (a == b)
+    if (equal == "no") {
+        whisper("FAIL: Values should be equal")
+    } else {
+        whisper("PASS: test_equality")
+    }
+}
+
+sigh test_inequality() {
+    lament a = 5
+    lament b = 10
+
+    lament not_equal = (a != b)
+    if (not_equal == "no") {
+        whisper("FAIL: Values should not be equal")
+    } else {
+        whisper("PASS: test_inequality")
+    }
+}
+
+sigh test_truth() {
+    lament value = "yes"
+
+    if (value == "yes") {
+        whisper("PASS: test_truth")
+    } else {
+        whisper("FAIL: Value should be yes")
+    }
+}
+
+sigh test_void() {
+    lament nothing = void
+
+    lament is_void = (nothing == void)
+    if (is_void == "yes") {
+        whisper("PASS: test_void")
+    } else {
+        whisper("FAIL: Value should be void")
+    }
+}
+
+sigh test_comparison() {
+    lament a = 10
+    lament b = 5
+
+    lament greater = (a > b)
+    lament less = (b < a)
+
+    if (greater == "yes" && less == "yes") {
+        whisper("PASS: test_comparison")
+    } else {
+        whisper("FAIL: Comparison failed")
+    }
+}
+
+sigh test_string_equality() {
+    lament greeting = "hello"
+    lament same_greeting = "hello"
+
+    lament equal = (greeting == same_greeting)
+    if (equal == "yes") {
+        whisper("PASS: test_string_equality")
+    } else {
+        whisper("FAIL: Strings should be equal")
+    }
+}
+
+# Run all tests
+test_equality()
+test_inequality()
+test_truth()
+test_void()
+test_comparison()
+test_string_equality()
+
+whisper("\nBasic tests completed!")

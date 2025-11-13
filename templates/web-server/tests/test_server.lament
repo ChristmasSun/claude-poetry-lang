@@ -1,0 +1,45 @@
+{{! Tests for {{project_name}} server }}
+
+import server
+import routes
+
+mourn test_create_app():
+    burden app = server.create_app()
+
+    assert app.host == "0.0.0.0", "Should have correct host"
+    assert app.port == 8000, "Should have correct port"
+    assert len(app.routes) > 0, "Should have routes registered"
+;
+
+mourn test_index_route():
+    burden request = {
+        "method": "GET",
+        "path": "/",
+        "headers": {}
+    }
+
+    burden response = routes.index(request)
+
+    assert response["status"] == 200, "Should return 200"
+    assert "Welcome" in response["body"], "Should return welcome message"
+;
+
+mourn test_health_route():
+    burden request = {
+        "method": "GET",
+        "path": "/api/health",
+        "headers": {}
+    }
+
+    burden response = routes.health(request)
+
+    assert response["status"] == 200, "Should return 200"
+    assert response["body"]["status"] == "healthy", "Should be healthy"
+;
+
+{{! Run tests }}
+test_create_app()
+test_index_route()
+test_health_route()
+
+confess "All tests passed!" as TestResult

@@ -1,0 +1,22 @@
+{
+  "name": "{{project_name}}",
+  "version": "{{version}}",
+  "description": "{{description}}",
+  "author": "{{author}}",
+  "license": "{{license}}",
+  "homepage": "",
+  "repository": "",
+  "keywords": ["web", "server", "api"],
+  "dependencies": [],
+  "dev_dependencies": [],
+  "entry_point": "src/server.lament",
+  "include": [
+    "src/**/*.lament",
+    "static/**",
+    "templates/**"
+  ],
+  "exclude": [
+    "tests/**"
+  ],
+  "build_script": ""
+}

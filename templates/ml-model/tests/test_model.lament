@@ -1,0 +1,72 @@
+{{! Tests for {{project_name}} model }}
+
+import model
+import training
+import evaluation
+import inference
+
+mourn test_model_creation():
+    burden config = {"weight": 2.0, "bias": 1.0}
+    burden ml_model = model.create_model(config)
+
+    assert ml_model != null, "Model should be created"
+    assert ml_model.is_trained == False, "Model should start untrained"
+;
+
+mourn test_forward_pass():
+    burden ml_model = model.create_model({"weight": 2.0})
+    burden input_data = [1.0, 2.0, 3.0]
+
+    burden output = ml_model.forward(input_data)
+
+    assert len(output) == 3, "Output should have same length as input"
+    assert output[0] == 2.0, "Should apply weight correctly"
+;
+
+mourn test_training():
+    burden ml_model = model.create_model({})
+    burden trainer = training.create_trainer(ml_model, {"learning_rate": 0.01})
+
+    burden train_data = [1.0, 2.0, 3.0]
+    burden train_labels = [2.0, 4.0, 6.0]
+
+    burden history = trainer.train(train_data, train_labels, 5)
+
+    assert len(history) == 5, "Should train for 5 epochs"
+    assert ml_model.is_trained == True, "Model should be marked as trained"
+;
+
+mourn test_evaluation():
+    burden ml_model = model.create_model({"weight": 2.0})
+    ml_model.is_trained = True
+
+    burden test_data = [1.0, 2.0, 3.0]
+    burden test_labels = [2.0, 4.0, 6.0]
+
+    burden metrics = evaluation.evaluate_model(ml_model, test_data, test_labels)
+
+    assert "mse" in metrics, "Should compute MSE"
+    assert "mae" in metrics, "Should compute MAE"
+    assert "r2" in metrics, "Should compute R²"
+;
+
+mourn test_inference():
+    burden ml_model = model.create_model({"weight": 2.0})
+    ml_model.is_trained = True
+
+    burden predictor = inference.create_predictor(ml_model, {})
+    burden input_data = [1.0, 2.0, 3.0]
+
+    burden predictions = predictor.predict(input_data)
+
+    assert len(predictions) == 3, "Should predict all inputs"
+;
+
+{{! Run tests }}
+test_model_creation()
+test_forward_pass()
+test_training()
+test_evaluation()
+test_inference()
+
+confess "All tests passed!" as TestResult

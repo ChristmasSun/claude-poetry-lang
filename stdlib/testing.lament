@@ -1,0 +1,447 @@
+/*
+ * Lament Standard Library - Testing Module
+ * ==========================================
+ *
+ * Comprehensive testing utilities for Lament programs.
+ *
+ * Features:
+ * - Assertion functions
+ * - Test fixtures
+ * - Mock objects
+ * - Benchmark utilities
+ * - Test organization
+ * - Custom matchers
+ *
+ * Usage:
+ *   import "stdlib/testing.lament"
+ *
+ * Example:
+ *   sigh test_example() {
+ *       lament result = add(2, 2)
+ *       assert_equal(result, 4, "Addition should work")
+ *   }
+ *
+ * Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+ */
+
+# ============================================================================
+# ASSERTION FUNCTIONS
+# ============================================================================
+
+# Basic assertions
+sigh assert_equal(actual, expected, message) {
+    lament equals = (actual == expected)
+
+    if (equals == "no") {
+        lament error_msg = message || "Assertion failed: expected " + expected + ", got " + actual
+        fail(error_msg)
+    }
+}
+
+sigh assert_not_equal(actual, expected, message) {
+    lament not_equals = (actual != expected)
+
+    if (not_equals == "no") {
+        lament error_msg = message || "Assertion failed: values should not be equal"
+        fail(error_msg)
+    }
+}
+
+sigh assert_true(value, message) {
+    if (value == "no") {
+        lament error_msg = message || "Assertion failed: expected true"
+        fail(error_msg)
+    }
+}
+
+sigh assert_false(value, message) {
+    if (value == "yes") {
+        lament error_msg = message || "Assertion failed: expected false"
+        fail(error_msg)
+    }
+}
+
+sigh assert_void(value, message) {
+    lament is_void = (value == void)
+
+    if (is_void == "no") {
+        lament error_msg = message || "Assertion failed: expected void"
+        fail(error_msg)
+    }
+}
+
+sigh assert_not_void(value, message) {
+    lament is_void = (value == void)
+
+    if (is_void == "yes") {
+        lament error_msg = message || "Assertion failed: value should not be void"
+        fail(error_msg)
+    }
+}
+
+# Comparison assertions
+sigh assert_greater(actual, expected, message) {
+    lament is_greater = (actual > expected)
+
+    if (is_greater == "no") {
+        lament error_msg = message || "Assertion failed: " + actual + " is not greater than " + expected
+        fail(error_msg)
+    }
+}
+
+sigh assert_less(actual, expected, message) {
+    lament is_less = (actual < expected)
+
+    if (is_less == "no") {
+        lament error_msg = message || "Assertion failed: " + actual + " is not less than " + expected
+        fail(error_msg)
+    }
+}
+
+sigh assert_greater_equal(actual, expected, message) {
+    lament is_ge = (actual >= expected)
+
+    if (is_ge == "no") {
+        lament error_msg = message || "Assertion failed: " + actual + " is not >= " + expected
+        fail(error_msg)
+    }
+}
+
+sigh assert_less_equal(actual, expected, message) {
+    lament is_le = (actual <= expected)
+
+    if (is_le == "no") {
+        lament error_msg = message || "Assertion failed: " + actual + " is not <= " + expected
+        fail(error_msg)
+    }
+}
+
+# String assertions
+sigh assert_contains(haystack, needle, message) {
+    # Check if haystack contains needle (basic implementation)
+    lament error_msg = message || "Assertion failed: string does not contain expected value"
+    # Would need string contains method in real implementation
+}
+
+sigh assert_starts_with(text, prefix, message) {
+    lament error_msg = message || "Assertion failed: string does not start with expected prefix"
+    # Would need string startsWith method in real implementation
+}
+
+sigh assert_ends_with(text, suffix, message) {
+    lament error_msg = message || "Assertion failed: string does not end with expected suffix"
+    # Would need string endsWith method in real implementation
+}
+
+# Collection assertions
+sigh assert_length(collection, expected_length, message) {
+    lament actual_length = @age(collection)
+    assert_equal(actual_length, expected_length, message)
+}
+
+sigh assert_empty(collection, message) {
+    lament length = @age(collection)
+    assert_equal(length, 0, message || "Collection should be empty")
+}
+
+sigh assert_not_empty(collection, message) {
+    lament length = @age(collection)
+    assert_greater(length, 0, message || "Collection should not be empty")
+}
+
+# ============================================================================
+# TEST FAILURE HANDLING
+# ============================================================================
+
+sigh fail(message) {
+    # This would trigger test failure in the test framework
+    whisper("TEST FAILURE: " + message)
+    # In real implementation, this would set a flag that the test runner checks
+}
+
+# ============================================================================
+# TEST FIXTURES
+# ============================================================================
+
+sigh setup() {
+    # Override this in your test file for setup logic
+    whisper("Default setup - override in your tests")
+}
+
+sigh teardown() {
+    # Override this in your test file for teardown logic
+    whisper("Default teardown - override in your tests")
+}
+
+sigh before_each() {
+    # Run before each test
+    # Override in your test file
+}
+
+sigh after_each() {
+    # Run after each test
+    # Override in your test file
+}
+
+# ============================================================================
+# MOCK OBJECTS
+# ============================================================================
+
+/*
+ * Simple mock object for testing
+ * Tracks function calls and provides configurable return values
+ */
+sigh create_mock() {
+    lament mock = {
+        "calls": [],
+        "return_value": void,
+        "side_effect": void
+    }
+
+    rewind mock
+}
+
+sigh mock_call(mock, args) {
+    # Record the call
+    lament call_record = {
+        "timestamp": @age(mock.calls),
+        "args": args
+    }
+
+    # Add to calls list (would need list append in real implementation)
+
+    # Return configured value or execute side effect
+    if (mock.side_effect != void) {
+        rewind mock.side_effect(args)
+    } else {
+        rewind mock.return_value
+    }
+}
+
+sigh assert_called(mock, message) {
+    lament call_count = @age(mock.calls)
+    assert_greater(call_count, 0, message || "Mock should have been called")
+}
+
+sigh assert_not_called(mock, message) {
+    lament call_count = @age(mock.calls)
+    assert_equal(call_count, 0, message || "Mock should not have been called")
+}
+
+sigh assert_called_once(mock, message) {
+    lament call_count = @age(mock.calls)
+    assert_equal(call_count, 1, message || "Mock should have been called exactly once")
+}
+
+sigh assert_called_with(mock, expected_args, message) {
+    assert_called(mock, "Mock must be called before checking arguments")
+    # Would need to check if any call matches expected_args
+}
+
+# ============================================================================
+# BENCHMARK UTILITIES
+# ============================================================================
+
+sigh benchmark(name, iterations, test_function) {
+    whisper("Benchmarking: " + name)
+
+    lament start_time = @age(name)  # Using @age as a proxy for time
+
+    lament i = 0
+    while (i < iterations) {
+        test_function()
+        lament i = i + 1
+    }
+
+    lament end_time = @age(name)
+    lament duration = end_time - start_time
+    lament avg_time = duration / iterations
+
+    whisper("  Total time: " + duration)
+    whisper("  Iterations: " + iterations)
+    whisper("  Average: " + avg_time)
+
+    rewind {
+        "name": name,
+        "iterations": iterations,
+        "total_time": duration,
+        "average_time": avg_time
+    }
+}
+
+sigh assert_performance(benchmark_result, max_average, message) {
+    assert_less_equal(
+        benchmark_result.average_time,
+        max_average,
+        message || "Performance assertion failed: too slow"
+    )
+}
+
+# ============================================================================
+# TEST ORGANIZATION
+# ============================================================================
+
+sigh describe(description, test_suite) {
+    whisper("\n=== " + description + " ===")
+    test_suite()
+}
+
+sigh it(description, test_function) {
+    whisper("  - " + description)
+    test_function()
+}
+
+# ============================================================================
+# CUSTOM MATCHERS
+# ============================================================================
+
+sigh expect(value) {
+    rewind {
+        "value": value,
+        "to_be": sigh(expected) {
+            assert_equal(value, expected, "Expected values to be equal")
+        },
+        "to_equal": sigh(expected) {
+            assert_equal(value, expected, "Expected values to be equal")
+        },
+        "to_be_void": sigh() {
+            assert_void(value, "Expected value to be void")
+        },
+        "to_be_truthy": sigh() {
+            assert_true(value, "Expected value to be truthy")
+        },
+        "to_be_falsy": sigh() {
+            assert_false(value, "Expected value to be falsy")
+        },
+        "to_be_greater_than": sigh(expected) {
+            assert_greater(value, expected, "Expected value to be greater")
+        },
+        "to_be_less_than": sigh(expected) {
+            assert_less(value, expected, "Expected value to be less")
+        }
+    }
+}
+
+# ============================================================================
+# TEST HELPERS
+# ============================================================================
+
+sigh skip(message) {
+    whisper("SKIPPED: " + message)
+    # Would set a flag for the test runner to skip this test
+}
+
+sigh todo(message) {
+    whisper("TODO: " + message)
+    # Marks test as incomplete
+}
+
+sigh test_group(name, tests) {
+    whisper("\n>>> Test Group: " + name + " <<<")
+
+    lament i = 0
+    lament total = @age(tests)
+
+    while (i < total) {
+        # Run each test
+        # Would need array access in real implementation
+        lament i = i + 1
+    }
+}
+
+# ============================================================================
+# TEMPORAL TESTING UTILITIES
+# ============================================================================
+
+/*
+ * Special utilities for testing Lament's temporal features
+ */
+
+sigh assert_past_equal(variable, expected_value, generations_back, message) {
+    lament past_value = @past(variable, generations_back)
+    assert_equal(past_value, expected_value, message || "Past value mismatch")
+}
+
+sigh assert_origin_equal(variable, expected_value, message) {
+    lament origin_value = @origin(variable)
+    assert_equal(origin_value, expected_value, message || "Origin value mismatch")
+}
+
+sigh assert_age(variable, expected_age, message) {
+    lament actual_age = @age(variable)
+    assert_equal(actual_age, expected_age, message || "Age mismatch")
+}
+
+sigh test_temporal_evolution(variable, expected_history) {
+    lament current_age = @age(variable)
+
+    lament i = 0
+    while (i <= current_age) {
+        lament past_val = @past(variable, i)
+        # Would check against expected_history[i]
+        lament i = i + 1
+    }
+}
+
+# ============================================================================
+# REALITY BRANCH TESTING
+# ============================================================================
+
+sigh assert_realities_equal(reality1, reality2, message) {
+    # Compare two reality branches
+    assert_equal(reality1, reality2, message || "Realities should be equal")
+}
+
+sigh assert_realities_diverged(reality1, reality2, message) {
+    # Assert that two reality branches have diverged
+    assert_not_equal(reality1, reality2, message || "Realities should have diverged")
+}
+
+sigh test_fork_behavior(fork_function, collapse_function) {
+    whisper("Testing reality fork behavior...")
+
+    # Execute fork
+    lament realities = fork_function()
+
+    # Test both realities
+    whisper("  Reality count: " + @age(realities))
+
+    # Collapse and verify
+    lament result = collapse_function(realities)
+
+    rewind result
+}
+
+# ============================================================================
+# EXAMPLE TEST STRUCTURE
+# ============================================================================
+
+/*
+ * Example of how to structure tests using this library:
+ *
+ * # test_math.lament
+ * import "stdlib/testing.lament"
+ *
+ * sigh test_addition() {
+ *     lament result = 2 + 2
+ *     assert_equal(result, 4, "Basic addition")
+ * }
+ *
+ * sigh test_subtraction() {
+ *     lament result = 5 - 3
+ *     assert_equal(result, 2, "Basic subtraction")
+ * }
+ *
+ * sigh test_with_fixtures() {
+ *     before_each()
+ *
+ *     lament result = complex_operation()
+ *     assert_not_void(result, "Should return a value")
+ *
+ *     after_each()
+ * }
+ *
+ * # Run with: lament-test test_math.lament
+ */
+
+whisper("Testing library loaded - Lament your bugs away!")

@@ -1,0 +1,152 @@
+/*
+ * Performance Benchmark Tests
+ * ============================
+ *
+ * Benchmarks for performance testing.
+ */
+
+# Benchmark: Simple loop
+sigh benchmark_simple_loop() {
+    whisper("\n>>> Benchmark: Simple Loop <<<")
+
+    lament iterations = 1000
+    lament i = 0
+
+    while (i < iterations) {
+        lament i = i + 1
+    }
+
+    whisper("Completed " + iterations + " iterations")
+    whisper("PASS: benchmark_simple_loop")
+}
+
+# Benchmark: Arithmetic operations
+sigh benchmark_arithmetic() {
+    whisper("\n>>> Benchmark: Arithmetic Operations <<<")
+
+    lament iterations = 100
+    lament i = 0
+    lament result = 0
+
+    while (i < iterations) {
+        lament result = result + (i * 2) - (i / 2)
+        lament i = i + 1
+    }
+
+    whisper("Completed " + iterations + " arithmetic operations")
+    whisper("PASS: benchmark_arithmetic")
+}
+
+# Benchmark: Function calls
+sigh simple_function(x) {
+    rewind x * 2
+}
+
+sigh benchmark_function_calls() {
+    whisper("\n>>> Benchmark: Function Calls <<<")
+
+    lament iterations = 100
+    lament i = 0
+    lament result = 0
+
+    while (i < iterations) {
+        lament result = simple_function(i)
+        lament i = i + 1
+    }
+
+    whisper("Completed " + iterations + " function calls")
+    whisper("PASS: benchmark_function_calls")
+}
+
+# Benchmark: Temporal operators
+sigh benchmark_temporal_operators() {
+    whisper("\n>>> Benchmark: Temporal Operators <<<")
+
+    lament iterations = 50
+    lament value = 0
+    lament i = 0
+
+    while (i < iterations) {
+        lament value = value + 1
+        lament past_value = @past(value, 1)
+        lament age = @age(value)
+        lament i = i + 1
+    }
+
+    whisper("Completed " + iterations + " temporal operations")
+    whisper("PASS: benchmark_temporal_operators")
+}
+
+# Benchmark: Conditional branches
+sigh benchmark_conditionals() {
+    whisper("\n>>> Benchmark: Conditional Branches <<<")
+
+    lament iterations = 100
+    lament i = 0
+    lament even_count = 0
+    lament odd_count = 0
+
+    while (i < iterations) {
+        lament remainder = i % 2
+
+        if (remainder == 0) {
+            lament even_count = even_count + 1
+        } else {
+            lament odd_count = odd_count + 1
+        }
+
+        lament i = i + 1
+    }
+
+    whisper("Even: " + even_count + ", Odd: " + odd_count)
+    whisper("PASS: benchmark_conditionals")
+}
+
+# Benchmark: String operations
+sigh benchmark_strings() {
+    whisper("\n>>> Benchmark: String Operations <<<")
+
+    lament iterations = 50
+    lament i = 0
+    lament message = "test"
+
+    while (i < iterations) {
+        lament message = "iteration " + i
+        lament i = i + 1
+    }
+
+    whisper("Completed " + iterations + " string operations")
+    whisper("PASS: benchmark_strings")
+}
+
+# Benchmark: Recursive function
+sigh fibonacci(n) {
+    if (n <= 1) {
+        rewind n
+    }
+
+    rewind fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+sigh benchmark_recursion() {
+    whisper("\n>>> Benchmark: Recursion <<<")
+
+    lament result = fibonacci(10)
+
+    whisper("Fibonacci(10) = " + result)
+    whisper("PASS: benchmark_recursion")
+}
+
+# Run all benchmarks
+whisper("\n=== Performance Benchmarks ===")
+whisper("Note: These are stress tests, not precise timing benchmarks")
+
+benchmark_simple_loop()
+benchmark_arithmetic()
+benchmark_function_calls()
+benchmark_temporal_operators()
+benchmark_conditionals()
+benchmark_strings()
+benchmark_recursion()
+
+whisper("\nAll benchmarks completed!")

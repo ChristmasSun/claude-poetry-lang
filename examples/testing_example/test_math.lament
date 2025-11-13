@@ -1,0 +1,161 @@
+/*
+ * Mathematical Operations Tests
+ * ==============================
+ *
+ * Tests for the calculator module.
+ */
+
+# Test addition
+sigh test_add_positive_numbers() {
+    lament result = 2 + 3
+
+    lament correct = (result == 5)
+    if (correct == "yes") {
+        whisper("PASS: test_add_positive_numbers")
+    } else {
+        whisper("FAIL: 2 + 3 should equal 5, got " + result)
+    }
+}
+
+sigh test_add_negative_numbers() {
+    lament result = -5 + 3
+
+    lament correct = (result == -2)
+    if (correct == "yes") {
+        whisper("PASS: test_add_negative_numbers")
+    } else {
+        whisper("FAIL: -5 + 3 should equal -2")
+    }
+}
+
+sigh test_add_zero() {
+    lament result = 10 + 0
+
+    lament correct = (result == 10)
+    if (correct == "yes") {
+        whisper("PASS: test_add_zero")
+    } else {
+        whisper("FAIL: 10 + 0 should equal 10")
+    }
+}
+
+# Test subtraction
+sigh test_subtract_positive() {
+    lament result = 10 - 4
+
+    lament correct = (result == 6)
+    if (correct == "yes") {
+        whisper("PASS: test_subtract_positive")
+    } else {
+        whisper("FAIL: 10 - 4 should equal 6")
+    }
+}
+
+sigh test_subtract_negative() {
+    lament result = 5 - (-3)
+
+    lament correct = (result == 8)
+    if (correct == "yes") {
+        whisper("PASS: test_subtract_negative")
+    } else {
+        whisper("FAIL: 5 - (-3) should equal 8")
+    }
+}
+
+# Test multiplication
+sigh test_multiply_positive() {
+    lament result = 4 * 5
+
+    lament correct = (result == 20)
+    if (correct == "yes") {
+        whisper("PASS: test_multiply_positive")
+    } else {
+        whisper("FAIL: 4 * 5 should equal 20")
+    }
+}
+
+sigh test_multiply_by_zero() {
+    lament result = 42 * 0
+
+    lament correct = (result == 0)
+    if (correct == "yes") {
+        whisper("PASS: test_multiply_by_zero")
+    } else {
+        whisper("FAIL: 42 * 0 should equal 0")
+    }
+}
+
+sigh test_multiply_negative() {
+    lament result = -3 * 4
+
+    lament correct = (result == -12)
+    if (correct == "yes") {
+        whisper("PASS: test_multiply_negative")
+    } else {
+        whisper("FAIL: -3 * 4 should equal -12")
+    }
+}
+
+# Test division
+sigh test_divide_evenly() {
+    lament result = 20 / 4
+
+    lament correct = (result == 5)
+    if (correct == "yes") {
+        whisper("PASS: test_divide_evenly")
+    } else {
+        whisper("FAIL: 20 / 4 should equal 5")
+    }
+}
+
+sigh test_divide_by_one() {
+    lament result = 100 / 1
+
+    lament correct = (result == 100)
+    if (correct == "yes") {
+        whisper("PASS: test_divide_by_one")
+    } else {
+        whisper("FAIL: 100 / 1 should equal 100")
+    }
+}
+
+# Test complex expressions
+sigh test_order_of_operations() {
+    lament result = 2 + 3 * 4
+
+    lament correct = (result == 14)
+    if (correct == "yes") {
+        whisper("PASS: test_order_of_operations")
+    } else {
+        whisper("FAIL: 2 + 3 * 4 should equal 14")
+    }
+}
+
+sigh test_parentheses() {
+    lament result = (2 + 3) * 4
+
+    lament correct = (result == 20)
+    if (correct == "yes") {
+        whisper("PASS: test_parentheses")
+    } else {
+        whisper("FAIL: (2 + 3) * 4 should equal 20")
+    }
+}
+
+# Run all tests
+whisper("\n=== Mathematical Operations Tests ===\n")
+
+test_add_positive_numbers()
+test_add_negative_numbers()
+test_add_zero()
+test_subtract_positive()
+test_subtract_negative()
+test_multiply_positive()
+test_multiply_by_zero()
+test_multiply_negative()
+test_divide_evenly()
+test_divide_by_one()
+test_order_of_operations()
+test_parentheses()
+
+whisper("\nMath tests completed!")

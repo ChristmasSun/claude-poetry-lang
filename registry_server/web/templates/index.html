@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Lament Registry - The Vault of Souls{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <div class="container">
+        <h1 class="hero-title">The Vault of Souls</h1>
+        <p class="hero-subtitle">Package Registry for the Lament Programming Language</p>
+
+        <div class="search-box">
+            <form action="/search" method="get">
+                <input type="text" name="q" placeholder="Search packages..." class="search-input">
+                <button type="submit" class="search-button">Search</button>
+            </form>
+        </div>
+
+        <div class="quick-start">
+            <h3>Quick Start</h3>
+            <pre><code># Install a package
+lament-pkg install &lt;package-name&gt;
+
+# Publish your package
+lament-registry publish .</code></pre>
+        </div>
+    </div>
+</div>
+
+<div class="stats-section">
+    <div class="container">
+        <h2>Registry Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_packages }}</div>
+                <div class="stat-label">Packages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_versions }}</div>
+                <div class="stat-label">Versions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_downloads }}</div>
+                <div class="stat-label">Downloads</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_users }}</div>
+                <div class="stat-label">Users</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="recent-packages">
+    <div class="container">
+        <h2>Recently Published</h2>
+        <div class="package-list">
+            {% for package in stats.recent_packages %}
+            <div class="package-card">
+                <h3>
+                    <a href="/package/{{ package.name }}">{{ package.name }}</a>
+                    <span class="version">v{{ package.version }}</span>
+                </h3>
+                <p class="package-description">{{ package.description }}</p>
+                <div class="package-meta">
+                    <span class="author">{{ package.author }}</span>
+                    <span class="downloads">{{ package.downloads }} downloads</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="browse-more">
+            <a href="/browse" class="button">Browse All Packages</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

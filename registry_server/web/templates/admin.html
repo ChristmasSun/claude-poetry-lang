@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Panel - Lament Registry{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Admin Panel</h1>
+
+    <div class="admin-section">
+        <h2>Registry Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_packages }}</div>
+                <div class="stat-label">Total Packages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_versions }}</div>
+                <div class="stat-label">Total Versions</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_downloads }}</div>
+                <div class="stat-label">Total Downloads</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_users }}</div>
+                <div class="stat-label">Total Users</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="admin-section">
+        <h2>Users</h2>
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Admin</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ 'Yes' if user.is_admin else 'No' }}</td>
+                    <td>{{ user.created_at }}</td>
+                    <td>
+                        {% if not user.is_admin %}
+                        <button class="btn-small" onclick="makeAdmin({{ user.id }})">Make Admin</button>
+                        <button class="btn-small btn-danger" onclick="deleteUser({{ user.id }})">Delete</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="admin-section">
+        <h2>Recent Packages</h2>
+        <div class="package-list">
+            {% for package in stats.recent_packages %}
+            <div class="package-card-small">
+                <a href="/package/{{ package.name }}">{{ package.name }}@{{ package.version }}</a>
+                <span>by {{ package.author }}</span>
+                <span>{{ package.downloads }} downloads</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="admin-section">
+        <h2>System Actions</h2>
+        <div class="admin-actions">
+            <button class="button" onclick="rebuildIndex()">Rebuild Search Index</button>
+            <button class="button" onclick="cleanupCache()">Clean Cache</button>
+            <button class="button" onclick="backupDatabase()">Backup Database</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function makeAdmin(userId) {
+    if (confirm('Make this user an admin?')) {
+        fetch(`/api/admin/users/${userId}/make-admin`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Failed to make user admin');
+            }
+        });
+    }
+}
+
+function deleteUser(userId) {
+    if (confirm('Are you sure you want to delete this user?')) {
+        fetch(`/api/admin/users/${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Failed to delete user');
+            }
+        });
+    }
+}
+
+function rebuildIndex() {
+    if (confirm('Rebuild search index? This may take a while.')) {
+        // Call rebuild endpoint
+        alert('Index rebuild started in background');
+    }
+}
+
+function cleanupCache() {
+    // Call cleanup endpoint
+    alert('Cache cleaned');
+}
+
+function backupDatabase() {
+    // Call backup endpoint
+    alert('Backup started');
+}
+</script>
+{% endblock %}

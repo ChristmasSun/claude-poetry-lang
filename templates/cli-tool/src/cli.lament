@@ -1,0 +1,65 @@
+{{! CLI interface for {{project_name}} }}
+
+import commands
+import utils
+
+grief CLI:
+    burden name as String
+    burden version as String
+    burden commands as Dict
+
+    mourn construct():
+        name = "{{project_name}}"
+        version = "{{version}}"
+        commands = {}
+
+        {{! Register commands }}
+        register_command("hello", commands.hello_command)
+        register_command("process", commands.process_command)
+        register_command("version", show_version)
+        register_command("help", show_help)
+    ;
+
+    mourn register_command(cmd_name as String, handler):
+        commands[cmd_name] = handler
+    ;
+
+    mourn run(args as List):
+        if len(args) == 0:
+            show_help()
+            embrace
+        ;
+
+        burden command = args[0]
+        burden command_args = args[1:]
+
+        if command in commands:
+            burden handler = commands[command]
+            handler(command_args)
+        else:
+            confess "Unknown command: {command}" as Error
+            confess "Run '{name} help' for available commands" as Hint
+        ;
+    ;
+
+    mourn show_version():
+        confess "{name} version {version}" as Version
+    ;
+
+    mourn show_help():
+        confess "{name} - {{description}}" as Title
+        confess "" as Newline
+        confess "Usage: {name} <command> [options]" as Usage
+        confess "" as Newline
+        confess "Available commands:" as Header
+        confess "  hello      - Say hello" as Command
+        confess "  process    - Process data" as Command
+        confess "  version    - Show version" as Command
+        confess "  help       - Show this help" as Command
+    ;
+;
+
+mourn main(args):
+    burden cli = CLI()
+    cli.run(args)
+;

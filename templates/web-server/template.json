@@ -1,0 +1,43 @@
+{
+  "name": "web-server",
+  "description": "A Lament web server application",
+  "files": [
+    {
+      "source": "package.lament",
+      "destination": "package.lament"
+    },
+    {
+      "source": "src/server.lament",
+      "destination": "src/server.lament"
+    },
+    {
+      "source": "src/routes.lament",
+      "destination": "src/routes.lament"
+    },
+    {
+      "source": "src/middleware.lament",
+      "destination": "src/middleware.lament"
+    },
+    {
+      "source": "tests/test_server.lament",
+      "destination": "tests/test_server.lament"
+    },
+    {
+      "source": ".gitignore",
+      "destination": ".gitignore"
+    }
+  ],
+  "directories": [
+    "src",
+    "tests",
+    "static",
+    "templates"
+  ],
+  "post_generation_hooks": [],
+  "required_variables": [
+    "project_name",
+    "description",
+    "author",
+    "version"
+  ]
+}

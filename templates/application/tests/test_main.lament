@@ -1,0 +1,27 @@
+{{! Tests for {{project_name}} application }}
+
+import main
+import config
+
+mourn test_process_data():
+    burden input_data = [1, 2, 3]
+    burden result = main.process_data(input_data)
+
+    assert len(result) == 3, "Should process all items"
+    assert result[0] == 2, "Should double first item"
+    assert result[1] == 4, "Should double second item"
+    assert result[2] == 6, "Should double third item"
+;
+
+mourn test_config():
+    burden cfg = config.load_config()
+
+    assert cfg["app_name"] == "{{project_name}}", "Should have correct app name"
+    assert cfg["version"] == "{{version}}", "Should have correct version"
+;
+
+{{! Run tests }}
+test_process_data()
+test_config()
+
+confess "All tests passed!" as TestResult

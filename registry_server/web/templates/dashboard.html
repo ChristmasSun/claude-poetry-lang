@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Lament Registry{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Dashboard</h1>
+
+    <div class="dashboard-header">
+        <h2>Welcome, {{ user.username }}!</h2>
+        {% if user.is_admin %}
+        <span class="admin-badge">Admin</span>
+        {% endif %}
+    </div>
+
+    <div class="dashboard-section">
+        <h3>Your Packages</h3>
+
+        {% if packages %}
+        <div class="package-list">
+            {% for package in packages %}
+            <div class="package-card">
+                <div class="package-header">
+                    <h4>
+                        <a href="/package/{{ package.name }}">{{ package.name }}</a>
+                        <span class="version">v{{ package.version }}</span>
+                    </h4>
+                    <div class="package-actions">
+                        <button class="btn-small btn-danger" onclick="unpublish('{{ package.name }}', '{{ package.version }}')">
+                            Unpublish
+                        </button>
+                    </div>
+                </div>
+
+                <p class="package-description">{{ package.description }}</p>
+
+                <div class="package-stats">
+                    <span>{{ package.downloads }} downloads</span>
+                    <span>Published {{ package.published_at }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="no-packages">You haven't published any packages yet.</p>
+        {% endif %}
+
+        <div class="publish-section">
+            <h3>Publish a Package</h3>
+            <pre><code>lament-registry publish /path/to/package</code></pre>
+            <p>Or use the API to programmatically publish packages.</p>
+        </div>
+    </div>
+
+    <div class="dashboard-section">
+        <h3>API Keys</h3>
+        <p>Your API key: <code class="api-key">{{ user.api_key or 'Not generated' }}</code></p>
+        <button class="button" onclick="generateApiKey()">Generate New API Key</button>
+    </div>
+</div>
+
+<script>
+function unpublish(name, version) {
+    if (confirm(`Are you sure you want to unpublish ${name}@${version}?`)) {
+        // Make API call to unpublish
+        fetch(`/api/packages/${name}/${version}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+            }
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Failed to unpublish package');
+            }
+        });
+    }
+}
+
+function generateApiKey() {
+    // Generate new API key
+    fetch('/api/auth/generate-key', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${localStorage.getItem('api_key')}`
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(`New API key: ${data.api_key}\n\nSave this key securely!`);
+        location.reload();
+    });
+}
+</script>
+{% endblock %}

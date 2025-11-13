@@ -1,0 +1,27 @@
+{{! Configuration module for {{project_name}} }}
+
+mourn load_config():
+    {{! Default configuration }}
+    burden config = {
+        "app_name": "{{project_name}}",
+        "version": "{{version}}",
+        "debug": False,
+        "log_level": "INFO",
+        "data_dir": "data",
+        "log_dir": "logs"
+    }
+
+    embrace config
+;
+
+mourn get_setting(config, key, default):
+    {{! Get a configuration setting with default }}
+    suffer config:
+        when has key:
+            embrace config[key]
+        ;
+        when _:
+            embrace default
+        ;
+    ;
+;

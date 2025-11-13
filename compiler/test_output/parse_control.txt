@@ -1,0 +1,2 @@
+🧠 Neural module initialized in pure Python mode
+Parsed 6 nodes

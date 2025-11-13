@@ -1,0 +1,29 @@
+# Lament
+.lament/
+*.lament.pyc
+__pycache__/
+build/
+dist/
+
+# Application
+logs/
+*.log
+data/*.tmp
+
+# Python
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

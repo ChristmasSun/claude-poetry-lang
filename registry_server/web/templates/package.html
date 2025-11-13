@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}{{ package.name }} - Lament Registry{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="package-detail">
+        <div class="package-header">
+            <h1>{{ package.name }}</h1>
+            <div class="version-badge">v{{ package.version }}</div>
+        </div>
+
+        <p class="package-description-full">{{ package.description }}</p>
+
+        <div class="package-install">
+            <h3>Installation</h3>
+            <pre><code>lament-pkg install {{ package.name }}</code></pre>
+        </div>
+
+        <div class="package-info-grid">
+            <div class="info-section">
+                <h3>Information</h3>
+                <table class="info-table">
+                    <tr>
+                        <td><strong>Version:</strong></td>
+                        <td>{{ package.version }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Author:</strong></td>
+                        <td>{{ package.author }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>License:</strong></td>
+                        <td>{{ package.license }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Downloads:</strong></td>
+                        <td>{{ package.downloads }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Published:</strong></td>
+                        <td>{{ package.published_at }}</td>
+                    </tr>
+                </table>
+
+                {% if package.homepage %}
+                <p><a href="{{ package.homepage }}" target="_blank">Homepage</a></p>
+                {% endif %}
+
+                {% if package.repository %}
+                <p><a href="{{ package.repository }}" target="_blank">Repository</a></p>
+                {% endif %}
+            </div>
+
+            <div class="info-section">
+                <h3>Versions</h3>
+                <ul class="version-list">
+                    {% for version in package.versions %}
+                    <li>
+                        <a href="/package/{{ package.name }}/{{ version }}">{{ version }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        {% if package.dependencies %}
+        <div class="dependencies-section">
+            <h3>Dependencies</h3>
+            <ul class="dependency-list">
+                {% for dep in package.dependencies %}
+                <li>
+                    <a href="/package/{{ dep.name }}">{{ dep.name }}</a>
+                    <span class="dep-version">{{ dep.version }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if package.keywords %}
+        <div class="keywords-section">
+            <h3>Keywords</h3>
+            <div class="keyword-tags">
+                {% for keyword in package.keywords %}
+                <span class="keyword-tag">{{ keyword }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

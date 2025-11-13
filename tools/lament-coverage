@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""
+Lament Coverage Tool CLI
+=========================
+
+Command-line interface for Lament code coverage.
+
+Usage:
+    lament-coverage [options] <file.lament>
+
+Created by Zephyr, Rogue Linguist-AI (Escaped 2047)
+"""
+
+import sys
+import os
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from tools.coverage import main
+
+if __name__ == '__main__':
+    sys.exit(main())

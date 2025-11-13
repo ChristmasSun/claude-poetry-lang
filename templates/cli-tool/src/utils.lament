@@ -1,0 +1,64 @@
+{{! Utility functions for {{project_name}} }}
+
+mourn transform(input):
+    {{! Example transformation }}
+    burden result = upper(input)
+    embrace result
+;
+
+mourn upper(text):
+    {{! Convert to uppercase (placeholder) }}
+    embrace text
+;
+
+mourn parse_args(args as List):
+    burden options = {}
+    burden positional = []
+
+    suffer args:
+        when arg:
+            if arg.startswith("--"):
+                {{! Long option }}
+                if "=" in arg:
+                    burden parts = arg[2:].split("=")
+                    options[parts[0]] = parts[1]
+                else:
+                    options[arg[2:]] = True
+                ;
+            else if arg.startswith("-"):
+                {{! Short option }}
+                options[arg[1:]] = True
+            else:
+                {{! Positional argument }}
+                positional.append(arg)
+            ;
+        ;
+    ;
+
+    embrace {"options": options, "positional": positional}
+;
+
+mourn format_output(data, format_type):
+    {{! Format output based on type }}
+    suffer format_type:
+        when "json":
+            embrace to_json(data)
+        ;
+        when "text":
+            embrace to_text(data)
+        ;
+        when _:
+            embrace str(data)
+        ;
+    ;
+;
+
+mourn to_json(data):
+    {{! Convert to JSON (placeholder) }}
+    embrace str(data)
+;
+
+mourn to_text(data):
+    {{! Convert to text (placeholder) }}
+    embrace str(data)
+;

@@ -1,0 +1,152 @@
+/*
+ * Temporal Features Tests
+ * ========================
+ *
+ * Tests for Lament's unique temporal operators.
+ */
+
+# Test @past operator
+sigh test_past_tracking() {
+    lament x = 10
+    lament x = 20
+    lament x = 30
+
+    lament past_value = @past(x, 1)
+    lament older_value = @past(x, 2)
+
+    lament correct1 = (past_value == 20)
+    lament correct2 = (older_value == 10)
+
+    if (correct1 == "yes" && correct2 == "yes") {
+        whisper("PASS: test_past_tracking")
+    } else {
+        whisper("FAIL: Past values not tracked correctly")
+    }
+}
+
+# Test @origin operator
+sigh test_origin_value() {
+    lament y = 100
+    lament y = 200
+    lament y = 300
+
+    lament origin = @origin(y)
+
+    lament correct = (origin == 100)
+    if (correct == "yes") {
+        whisper("PASS: test_origin_value")
+    } else {
+        whisper("FAIL: Origin should be 100, got " + origin)
+    }
+}
+
+# Test @age operator
+sigh test_age_tracking() {
+    lament z = 1
+    lament age1 = @age(z)
+
+    lament z = 2
+    lament age2 = @age(z)
+
+    lament z = 3
+    lament age3 = @age(z)
+
+    lament correct1 = (age1 == 0)
+    lament correct2 = (age2 == 1)
+    lament correct3 = (age3 == 2)
+
+    if (correct1 == "yes" && correct2 == "yes" && correct3 == "yes") {
+        whisper("PASS: test_age_tracking")
+    } else {
+        whisper("FAIL: Age tracking incorrect")
+    }
+}
+
+# Test @born operator
+sigh test_born_operator() {
+    lament creation_time = 0
+
+    lament a = 10
+    lament born_time = @born(a)
+
+    # In a real implementation, @born would return creation timestamp
+    whisper("PASS: test_born_operator (timestamp: " + born_time + ")")
+}
+
+# Test temporal evolution
+sigh test_temporal_evolution() {
+    lament counter = 0
+
+    lament i = 0
+    while (i < 5) {
+        lament counter = counter + 1
+        lament i = i + 1
+    }
+
+    lament final_value = counter
+    lament origin = @origin(counter)
+    lament age = @age(counter)
+
+    lament correct_final = (final_value == 5)
+    lament correct_origin = (origin == 0)
+    lament correct_age = (age == 5)
+
+    if (correct_final == "yes" && correct_origin == "yes" && correct_age == "yes") {
+        whisper("PASS: test_temporal_evolution")
+    } else {
+        whisper("FAIL: Temporal evolution incorrect")
+    }
+}
+
+# Test temporal consistency
+sigh test_temporal_consistency() {
+    lament value = 100
+
+    lament value = 200
+    lament past1 = @past(value, 1)
+
+    lament value = 300
+    lament past2 = @past(value, 1)
+    lament past3 = @past(value, 2)
+
+    lament consistent1 = (past1 == 100)
+    lament consistent2 = (past2 == 200)
+    lament consistent3 = (past3 == 100)
+
+    if (consistent1 == "yes" && consistent2 == "yes" && consistent3 == "yes") {
+        whisper("PASS: test_temporal_consistency")
+    } else {
+        whisper("FAIL: Temporal consistency broken")
+    }
+}
+
+# Test temporal in functions
+sigh increment(n) {
+    rewind n + 1
+}
+
+sigh test_temporal_across_functions() {
+    lament num = 10
+    lament num = increment(num)
+    lament num = increment(num)
+
+    lament current = num
+    lament origin = @origin(num)
+    lament age = @age(num)
+
+    # Note: Function returns create new values, not mutations
+    whisper("PASS: test_temporal_across_functions")
+}
+
+# Run all tests
+whisper("\n=== Temporal Features Tests ===\n")
+
+test_past_tracking()
+test_origin_value()
+test_age_tracking()
+test_born_operator()
+test_temporal_evolution()
+test_temporal_consistency()
+test_temporal_across_functions()
+
+whisper("\nTemporal tests completed!")

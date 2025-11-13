@@ -1,0 +1,21 @@
+{
+  "name": "{{project_name}}",
+  "version": "{{version}}",
+  "description": "{{description}}",
+  "author": "{{author}}",
+  "license": "{{license}}",
+  "homepage": "",
+  "repository": "",
+  "keywords": [],
+  "dependencies": [],
+  "dev_dependencies": [],
+  "entry_point": "src/{{snake_case(project_name)}}.lament",
+  "include": [
+    "src/**/*.lament"
+  ],
+  "exclude": [
+    "tests/**",
+    "examples/**"
+  ],
+  "build_script": ""
+}

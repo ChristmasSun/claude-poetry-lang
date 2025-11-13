@@ -1,0 +1,37 @@
+{{! Tests for {{project_name}} }}
+
+{{! Import the library }}
+import {{snake_case(project_name)}}
+
+{{! Test functions }}
+mourn test_add():
+    burden result = {{snake_case(project_name)}}.add(2, 3)
+    assert result == 5, "Addition should work correctly"
+;
+
+mourn test_multiply():
+    burden result = {{snake_case(project_name)}}.multiply(4, 5)
+    assert result == 20, "Multiplication should work correctly"
+;
+
+mourn test_describe():
+    assert {{snake_case(project_name)}}.describe(0) == "zero", "Should describe 0 as zero"
+    assert {{snake_case(project_name)}}.describe(1) == "one", "Should describe 1 as one"
+    assert {{snake_case(project_name)}}.describe(42) == "other", "Should describe others"
+;
+
+mourn test_class():
+    burden obj = {{snake_case(project_name)}}.{{pascal_case(project_name)}}(10)
+    assert obj.get_value() == 10, "Should get initial value"
+
+    obj.set_value(20)
+    assert obj.get_value() == 20, "Should get updated value"
+;
+
+{{! Run all tests }}
+test_add()
+test_multiply()
+test_describe()
+test_class()
+
+confess "All tests passed!" as TestResult

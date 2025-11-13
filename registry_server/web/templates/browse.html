@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Browse Packages - Lament Registry{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Browse Packages</h1>
+
+    <div class="search-filter">
+        <form action="/browse" method="get" class="filter-form">
+            <input type="text" name="q" placeholder="Search..." value="{{ query or '' }}" class="filter-input">
+            <select name="sort" class="filter-select">
+                <option value="downloads">Most Popular</option>
+                <option value="recent">Recently Updated</option>
+                <option value="name">Name (A-Z)</option>
+            </select>
+            <button type="submit" class="filter-button">Filter</button>
+        </form>
+    </div>
+
+    <div class="package-list">
+        {% for package in packages %}
+        <div class="package-card">
+            <div class="package-header">
+                <h3>
+                    <a href="/package/{{ package.name }}">{{ package.name }}</a>
+                    <span class="version">v{{ package.version }}</span>
+                </h3>
+                <div class="package-downloads">
+                    {{ package.downloads }} downloads
+                </div>
+            </div>
+
+            <p class="package-description">{{ package.description }}</p>
+
+            <div class="package-meta">
+                <span class="author">
+                    <strong>Author:</strong> {{ package.author }}
+                </span>
+                <span class="published">
+                    <strong>Published:</strong> {{ package.published_at }}
+                </span>
+            </div>
+
+            {% if package.keywords %}
+            <div class="package-keywords">
+                {% for keyword in package.keywords %}
+                <span class="keyword-tag">{{ keyword }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if not packages %}
+    <div class="no-results">
+        <p>No packages found.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{
+  "name": "ml-model",
+  "description": "A Lament machine learning model project",
+  "files": [
+    {
+      "source": "package.lament",
+      "destination": "package.lament"
+    },
+    {
+      "source": "src/model.lament",
+      "destination": "src/model.lament"
+    },
+    {
+      "source": "src/training.lament",
+      "destination": "src/training.lament"
+    },
+    {
+      "source": "src/evaluation.lament",
+      "destination": "src/evaluation.lament"
+    },
+    {
+      "source": "src/inference.lament",
+      "destination": "src/inference.lament"
+    },
+    {
+      "source": "tests/test_model.lament",
+      "destination": "tests/test_model.lament"
+    },
+    {
+      "source": ".gitignore",
+      "destination": ".gitignore"
+    }
+  ],
+  "directories": [
+    "src",
+    "tests",
+    "data",
+    "models",
+    "notebooks"
+  ],
+  "post_generation_hooks": [],
+  "required_variables": [
+    "project_name",
+    "description",
+    "author",
+    "version"
+  ]
+}

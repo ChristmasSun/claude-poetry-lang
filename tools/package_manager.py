@@ -452,13 +452,17 @@ class DependencyResolver:
 class PackageManager:
     """Main package manager for Lament."""
 
-    def __init__(self, base_dir: Optional[Path] = None):
+    def __init__(self, base_dir: Optional[Path] = None,
+                 verify_signatures: bool = True,
+                 skip_security: bool = False):
         """Initialize package manager."""
         self.base_dir = base_dir or Path.cwd()
         self.packages_dir = self.base_dir / ".lament" / "packages"
         self.cache_dir = self.base_dir / ".lament" / "cache"
         self.package_file = self.base_dir / "package.lament"
         self.lock_file = self.base_dir / "package-lock.lament"
+        self.verify_signatures = verify_signatures
+        self.skip_security = skip_security
 
         # Create directories
         self.packages_dir.mkdir(parents=True, exist_ok=True)
@@ -497,6 +501,26 @@ class PackageManager:
             package_spec: Package specification like 'package@^1.0.0' or None for all deps
             dev: Whether to install as dev dependency
         """
+        # Run security scan if not skipped
+        if not self.skip_security and self.package_file.exists():
+            print("\nRunning security scan...")
+            try:
+                from tools.security import SecurityScanner
+                scanner = SecurityScanner(self.base_dir)
+                report = scanner.scan(check_code=False)
+
+                # Warn about critical/high issues
+                if report.summary['critical'] > 0 or report.summary['high'] > 0:
+                    print(f"\nWARNING: Found {report.summary['critical']} critical and "
+                          f"{report.summary['high']} high severity security issues!")
+                    print("Run 'lament-audit' for details")
+
+                    if not self._confirm("Continue with installation?"):
+                        print("Installation cancelled")
+                        return
+            except ImportError:
+                print("Security scanner not available")
+
         # Load package metadata
         if not self.package_file.exists():
             print("No package.lament found. Run 'lament-pkg init' first.")
@@ -583,11 +607,54 @@ class PackageManager:
         with open(package_file, 'wb') as f:
             f.write(package_data)
 
+        # Verify signature if enabled
+        if self.verify_signatures:
+            if not self._verify_package_signature(package_file, name, version):
+                if not self._confirm(f"\nSignature verification failed for {name}@{version}. Continue?"):
+                    raise Exception("Package signature verification failed")
+                else:
+                    print(f"WARNING: Installing unverified package {name}@{version}")
+
         # TODO: Extract tarball
         # For now, just create a marker file
         (pkg_dir / "installed").touch()
 
         return checksum
+
+    def _verify_package_signature(self, package_file: Path, name: str, version: Version) -> bool:
+        """Verify package signature."""
+        try:
+            from tools.signing import PackageSigner
+            signer = PackageSigner()
+
+            # Try to download signature
+            sig_file = package_file.with_suffix('.tar.gz.sig')
+
+            if not sig_file.exists():
+                print(f"  No signature found for {name}@{version}")
+                return False
+
+            result = signer.verify_package(package_file, sig_file)
+            if result:
+                print(f"  ✓ Signature verified for {name}@{version}")
+            else:
+                print(f"  ✗ Signature verification failed for {name}@{version}")
+
+            return result
+        except ImportError:
+            print("  Signature verification not available (cryptography library missing)")
+            return False
+        except Exception as e:
+            print(f"  Signature verification error: {e}")
+            return False
+
+    def _confirm(self, message: str) -> bool:
+        """Ask user for confirmation."""
+        try:
+            response = input(f"{message} [y/N]: ").strip().lower()
+            return response in ['y', 'yes']
+        except (EOFError, KeyboardInterrupt):
+            return False
 
     def uninstall(self, package_name: str) -> None:
         """Uninstall a package."""
@@ -704,6 +771,12 @@ Examples:
     install_parser = subparsers.add_parser('install', help='Install packages')
     install_parser.add_argument('package', nargs='?', help='Package to install')
     install_parser.add_argument('--dev', action='store_true', help='Install as dev dependency')
+    install_parser.add_argument('--verify-signature', action='store_true', default=True,
+                              help='Verify package signatures (default: enabled)')
+    install_parser.add_argument('--skip-verification', action='store_true',
+                              help='Skip signature verification (NOT RECOMMENDED)')
+    install_parser.add_argument('--skip-security', action='store_true',
+                              help='Skip security scanning')
 
     # Uninstall command
     uninstall_parser = subparsers.add_parser('uninstall', help='Uninstall a package')
@@ -726,7 +799,17 @@ Examples:
         return
 
     # Create package manager
-    pm = PackageManager()
+    verify_sigs = True
+    skip_security = False
+
+    if args.command == 'install':
+        verify_sigs = not args.skip_verification
+        skip_security = args.skip_security
+
+        if args.skip_verification:
+            print("WARNING: Signature verification disabled. This is NOT RECOMMENDED!")
+
+    pm = PackageManager(verify_signatures=verify_sigs, skip_security=skip_security)
 
     # Execute command
     if args.command == 'init':
