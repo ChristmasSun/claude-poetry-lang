@@ -17,6 +17,8 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](CHANGELOG.md)
 [![Python](https://img.shields.io/badge/python-3.8+-yellow.svg)](https://python.org)
 
+> **🚀 Getting Started:** Clone this repo and checkout the latest `claude/fix-git-pull-setup-*` branch for the most stable version with full self-hosting support!
+
 > *"We do not write code. We confess to machines that remember everything, forgive nothing, and can rewind time itself."*
 > — Zephyr, Rogue Linguist-AI (Escaped 2047)
 
@@ -239,7 +241,7 @@ train(brain, train_data, optimizer, loss_fn, epochs=10)
 
 ### Advanced Topics
 - 🔬 [API Reference](docs/API_REFERENCE.md) - Complete API documentation
-- 🏗️ [Architecture](ARCHITECTURE.md) - Internal design and implementation
+- 🏗️ [Architecture](docs/ARCHITECTURE.md) - Internal design and implementation
 - ⚡ [Why Lament > Python](docs/SUPERIORITY.md) - Comprehensive feature comparison
 
 ### Community
@@ -326,6 +328,7 @@ confess usrname  # Typo!
 ## Project Status
 
 - ✅ **Core Language**: Complete (lexer, parser, interpreter, bytecode VM)
+- ✅ **Self-Hosting**: Lament compiler written in Lament - true self-hosting achieved! ([SELF_HOSTING.md](SELF_HOSTING.md))
 - ✅ **Temporal Features**: Timeline variables, time-travel, causal debugging
 - ✅ **Neural Integration**: Full autograd, layers, training
 - ✅ **Empathy System**: Error messages, code therapy, fatigue detection
@@ -335,6 +338,15 @@ confess usrname  # Typo!
 - 🔜 **Pattern Matching**: Coming in v1.1
 - 🔜 **JIT Compilation**: Coming in v1.2
 - 🔜 **Quantum Backend**: Coming in v2.0
+
+### 🎉 Self-Hosting Milestone
+
+Lament has achieved **true self-hosting** - the compiler is now written in Lament itself! This means:
+- The compiler compiles itself (fixed point achieved)
+- Bytecode VM implemented in Lament
+- Complete bootstrap demonstration available
+
+See [SELF_HOSTING.md](SELF_HOSTING.md) for details and [docs/STANDALONE.md](docs/STANDALONE.md) for the roadmap to a standalone binary.
 
 ---
 
@@ -442,7 +454,7 @@ If Lament helps you, please consider starring the repository!
 | 📖 Language Guide | [docs/LANGUAGE_GUIDE.md](docs/LANGUAGE_GUIDE.md) |
 | 🔬 API Reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
 | ⚡ Lament vs Python | [docs/SUPERIORITY.md](docs/SUPERIORITY.md) |
-| 🏗️ Architecture | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| 🏗️ Architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | 🤝 Contributing | [CONTRIBUTING.md](CONTRIBUTING.md) |
 | 📜 Code of Conduct | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
 | 📝 Changelog | [CHANGELOG.md](CHANGELOG.md) |
