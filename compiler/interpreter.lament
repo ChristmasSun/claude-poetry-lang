@@ -126,21 +126,21 @@ sigh env_lookup(env, name) {
     remember bindings = env["bindings"]
 
     # Try to find in current scope
-    attempt {
+    if name in bindings {
         remember value = bindings[name]
         exhale value
-    } catch error {
-        # Not in current scope, try parent
-        remember parent = env["parent"]
-        if parent != void {
-            exhale env_lookup(parent, name)
-        }
-
-        # Not found anywhere
-        confess "RUNTIME ERROR: Undefined variable: "
-        confess name
-        exhale void
     }
+
+    # Not in current scope, try parent
+    remember parent = env["parent"]
+    if parent != void {
+        exhale env_lookup(parent, name)
+    }
+
+    # Not found anywhere
+    confess "RUNTIME ERROR: Undefined variable: "
+    confess name
+    exhale void
 }
 
 # Define variable in current environment
@@ -155,23 +155,22 @@ sigh env_update(env, name, value) {
     remember bindings = env["bindings"]
 
     # Try to update in current scope
-    attempt {
-        remember old_value = bindings[name]
+    if name in bindings {
         bindings[name] = value
         env["bindings"] = bindings
         exhale yes
-    } catch error {
-        # Not in current scope, try parent
-        remember parent = env["parent"]
-        if parent != void {
-            exhale env_update(parent, name, value)
-        }
-
-        # Not found anywhere
-        confess "RUNTIME ERROR: Cannot assign to undefined variable: "
-        confess name
-        exhale no
     }
+
+    # Not in current scope, try parent
+    remember parent = env["parent"]
+    if parent != void {
+        exhale env_update(parent, name, value)
+    }
+
+    # Not found anywhere
+    confess "RUNTIME ERROR: Cannot assign to undefined variable: "
+    confess name
+    exhale no
 }
 
 # ============================================================================
@@ -388,13 +387,13 @@ sigh interp_eval(interp, node) {
         remember value = env_lookup(env, name)
 
         # If it's a timeline value, get current
-        attempt {
-            remember tval = value
-            if tval["type"] == "timeline" {
-                exhale interp_timeline_get(tval)
+        if typeof(value) == "ache" {
+            # value is a dict, check if it's a timeline
+            if "type" in value {
+                if value["type"] == "timeline" {
+                    exhale interp_timeline_get(value)
+                }
             }
-        } catch error {
-            # Not a timeline, return as-is
         }
 
         exhale value
@@ -426,9 +425,10 @@ sigh interp_eval(interp, node) {
         if op == "%" {
             exhale left_val % right_val
         }
-        if op == "**" {
-            exhale left_val ** right_val
-        }
+        # Note: ** (power) operator not yet supported in language
+        # if op == "**" {
+        #     exhale left_val ** right_val
+        # }
         if op == "==" {
             if left_val == right_val {
                 exhale yes
@@ -528,14 +528,17 @@ sigh interp_eval(interp, node) {
 
         # Update timeline value
         remember tval = env_lookup(env, name)
-        attempt {
-            if tval["type"] == "timeline" {
-                interp_timeline_assign(tval, value)
+        if typeof(tval) == "ache" {
+            if "type" in tval {
+                if tval["type"] == "timeline" {
+                    interp_timeline_assign(tval, value)
+                    exhale value
+                }
             }
-        } catch error {
-            # Not a timeline, just update
-            env_update(env, name, value)
         }
+
+        # Not a timeline, just update
+        env_update(env, name, value)
 
         exhale value
     }
@@ -566,7 +569,7 @@ sigh interp_eval(interp, node) {
             }
         } else {
             # Execute else branch if exists
-            attempt {
+            if "else_body" in node {
                 remember else_body = node["else_body"]
                 if else_body != void {
                     remember j = 0
@@ -578,8 +581,6 @@ sigh interp_eval(interp, node) {
                         j = j + 1
                     }
                 }
-            } catch error {
-                # No else branch
             }
         }
 
@@ -694,18 +695,19 @@ sigh interp_eval(interp, node) {
         remember func = env_lookup(env, func_name)
 
         # Check if built-in
-        attempt {
-            if func["type"] == "builtin" {
-                remember result = interp_call_builtin(func["name"], args)
-                exhale result
+        if typeof(func) == "ache" {
+            if "type" in func {
+                if func["type"] == "builtin" {
+                    remember result = interp_call_builtin(func["name"], args)
+                    exhale result
+                }
             }
-        } catch error {
-            # Not a built-in
         }
 
         # User-defined function
-        attempt {
-            if func["type"] == "function" {
+        if typeof(func) == "ache" {
+            if "type" in func {
+                if func["type"] == "function" {
                 remember params = func["params"]
                 remember body = func["body"]
                 remember closure_env = func["closure_env"]
@@ -747,13 +749,12 @@ sigh interp_eval(interp, node) {
                 # Restore environment
                 interp["current_env"] = old_env
                 exhale void
+                }
             }
-        } catch error {
-            confess "ERROR: Cannot call non-function: "
-            confess func_name
-            exhale void
         }
 
+        confess "ERROR: Cannot call non-function: "
+        confess func_name
         exhale void
     }
 
@@ -806,13 +807,19 @@ sigh interp_eval(interp, node) {
         remember obj = interp_eval(interp, node["object"])
         remember index = interp_eval(interp, node["index"])
 
-        attempt {
-            remember value = obj[index]
-            exhale value
-        } catch error {
-            confess "ERROR: Index out of bounds or invalid"
+        # For dicts, check if key exists
+        if typeof(obj) == "ache" {
+            if index in obj {
+                remember value = obj[index]
+                exhale value
+            }
+            confess "ERROR: Key not found in dict"
             exhale void
         }
+
+        # For lists, assume valid index (no bounds checking in simple version)
+        remember value = obj[index]
+        exhale value
     }
 
     # ========== TEMPORAL ACCESS ==========
@@ -910,37 +917,14 @@ sigh interp_error(message) {
     confess "==================================================="
 }
 
-# Try-catch execution
+# Try-catch execution (simplified - no real exception handling yet)
 sigh interp_try_catch(interp, try_body, catch_var, catch_body) {
-    attempt {
-        # Execute try block
-        remember i = 0
-        while i < length_of(try_body) {
-            interp_eval(interp, try_body[i])
-            i = i + 1
-        }
-    } catch error {
-        # Bind error to catch variable
-        remember env = interp["current_env"]
-        remember catch_env = create_environment(env)
-        remember old_env = interp["current_env"]
-        interp["current_env"] = catch_env
-
-        if catch_var != void {
-            remember tval = interp_create_timeline(error)
-            tval["type"] = "timeline"
-            env_define(catch_env, catch_var, tval)
-        }
-
-        # Execute catch block
-        remember j = 0
-        while j < length_of(catch_body) {
-            interp_eval(interp, catch_body[j])
-            j = j + 1
-        }
-
-        # Restore environment
-        interp["current_env"] = old_env
+    # For now, just execute try block without catch handling
+    # Full exception handling requires language-level support
+    remember i = 0
+    while i < length_of(try_body) {
+        interp_eval(interp, try_body[i])
+        i = i + 1
     }
 }
 
@@ -1051,23 +1035,29 @@ sigh interp_create_instance(class_obj) {
 # Access instance property or method
 sigh interp_instance_access(instance, property_name) {
     # Try properties first
-    attempt {
+    if "properties" in instance {
         remember properties = instance["properties"]
-        remember value = properties[property_name]
-        exhale value
-    } catch error {
-        # Try methods
-        remember class_obj = instance["class"]
-        remember methods = class_obj["methods"]
-        attempt {
-            remember method = methods[property_name]
-            exhale method
-        } catch e {
-            confess "ERROR: Property/method not found: "
-            confess property_name
-            exhale void
+        if property_name in properties {
+            remember value = properties[property_name]
+            exhale value
         }
     }
+
+    # Try methods
+    if "class" in instance {
+        remember class_obj = instance["class"]
+        if "methods" in class_obj {
+            remember methods = class_obj["methods"]
+            if property_name in methods {
+                remember method = methods[property_name]
+                exhale method
+            }
+        }
+    }
+
+    confess "ERROR: Property/method not found: "
+    confess property_name
+    exhale void
 }
 
 # ============================================================================
@@ -1079,22 +1069,22 @@ remember INTERP_MODULE_CACHE = {}
 # Import a module
 sigh interp_import_module(interp, module_name) {
     # Check cache
-    attempt {
+    if module_name in INTERP_MODULE_CACHE {
         remember cached = INTERP_MODULE_CACHE[module_name]
         exhale cached
-    } catch error {
-        # Load and parse module (simplified)
-        confess "Loading module: "
-        confess module_name
-
-        remember module = {
-            "name": module_name,
-            "exports": {}
-        }
-
-        INTERP_MODULE_CACHE[module_name] = module
-        exhale module
     }
+
+    # Load and parse module (simplified)
+    confess "Loading module: "
+    confess module_name
+
+    remember module = {
+        "name": module_name,
+        "exports": {}
+    }
+
+    INTERP_MODULE_CACHE[module_name] = module
+    exhale module
 }
 
 # ============================================================================
