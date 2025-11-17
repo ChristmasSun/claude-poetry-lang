@@ -141,6 +141,21 @@ class Assignment(ASTNode):
 
 
 @dataclass
+class IndexAssignment(ASTNode):
+    """
+    Represents index/subscript assignment (e.g., arr[0] = 5, dict["key"] = value).
+
+    Attributes:
+        object: The object being indexed
+        index: The index expression
+        value: Expression to assign
+    """
+    object: ASTNode
+    index: ASTNode
+    value: ASTNode
+
+
+@dataclass
 class VariableDecl(ASTNode):
     """
     Represents variable declaration (remember statement).
@@ -454,9 +469,26 @@ class Parser:
         elif token.type == TokenType.FORK:
             return self.parse_fork_reality()
         elif token.type == TokenType.IDENTIFIER:
-            # Could be assignment or function call
+            # Could be assignment, index assignment, or function call
+            # We need to parse the left side to handle cases like arr[0] = value
             if self.peek(1).type == TokenType.ASSIGN:
                 return self.parse_assignment()
+            elif self.peek(1).type == TokenType.LBRACKET:
+                # Parse the index access, then check for assignment
+                saved_pos = self.pos
+                lhs = self.parse_postfix()
+                if self.peek().type == TokenType.ASSIGN:
+                    # It's an index assignment
+                    self.advance()  # consume '='
+                    value = self.parse_expression()
+                    if isinstance(lhs, IndexAccess):
+                        return IndexAssignment(lhs.object, lhs.index, value)
+                    else:
+                        self.error("Invalid assignment target")
+                else:
+                    # Not an assignment, restore and parse as expression statement
+                    self.pos = saved_pos
+                    return self.parse_expression()
             elif self.peek(1).type == TokenType.LPAREN:
                 return self.parse_expression()  # function call as statement
             else:
@@ -674,7 +706,7 @@ class Parser:
 
     def parse_comparison(self) -> ASTNode:
         """
-        Parse comparison expressions (==, !=, <, >, <=, >=).
+        Parse comparison expressions (==, !=, <, >, <=, >=, in).
 
         Returns:
             BinaryOp node or lower precedence node
@@ -688,6 +720,7 @@ class Parser:
             TokenType.GREATER: '>',
             TokenType.LESS_EQ: '<=',
             TokenType.GREATER_EQ: '>=',
+            TokenType.IN: 'in',
         }
 
         if self.peek().type in comp_ops:
@@ -885,8 +918,20 @@ class Parser:
             self.expect(TokenType.RBRACKET)
             return ListLiteral(elements)
 
-        # Dict literal (currently unsupported in primary context)
+        # Dict literal
         if token.type == TokenType.LBRACE:
-            self.error("Unexpected '{'")
+            self.advance()
+            pairs = []
+            while self.peek().type != TokenType.RBRACE:
+                # Parse key expression
+                key = self.parse_expression()
+                self.expect(TokenType.COLON)
+                # Parse value expression
+                value = self.parse_expression()
+                pairs.append((key, value))
+                if self.peek().type == TokenType.COMMA:
+                    self.advance()
+            self.expect(TokenType.RBRACE)
+            return DictLiteral(pairs)
 
         self.error(f"Unexpected token: {token.type.name}")

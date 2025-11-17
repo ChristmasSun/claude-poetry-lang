@@ -27,7 +27,7 @@ from typing import Any, List, Dict, Optional
 from lament.types import Color, bell, TimelineValue
 from lament.parser import (
     ASTNode, NumberLiteral, StringLiteral, BoolLiteral, VoidLiteral,
-    Identifier, BinaryOp, UnaryOp, Assignment, VariableDecl,
+    Identifier, BinaryOp, UnaryOp, Assignment, IndexAssignment, VariableDecl,
     ConfessStmt, IfStmt, WhileStmt, ForStmt, FunctionDef,
     FunctionCall, ExhaleStmt, TemporalAccess, ListLiteral,
     DictLiteral, IndexAccess, ForkReality
@@ -106,6 +106,8 @@ class LamentInterpreter:
         - current_timeline(): Get current timeline identifier
         - System functions: File I/O, testing, async/await (from lament.system)
         """
+        self.globals['dict'] = lambda: {}
+        self.globals['list'] = lambda: []
         self.globals['range'] = lambda *args: list(range(*args))
         self.globals['length_of'] = lambda x: len(x)
         self.globals['ache_of'] = lambda x: abs(x)
@@ -292,6 +294,15 @@ class LamentInterpreter:
         elif isinstance(stmt, Assignment):
             value = self.evaluate(stmt.value)
             self.set_var(stmt.name, value)
+
+        elif isinstance(stmt, IndexAssignment):
+            obj = self.evaluate(stmt.object)
+            index = self.evaluate(stmt.index)
+            value = self.evaluate(stmt.value)
+            try:
+                obj[index] = value
+            except (KeyError, IndexError, TypeError) as e:
+                self.error(f"Cannot assign to index: {e}")
 
         elif isinstance(stmt, IfStmt):
             condition = self.evaluate(stmt.condition)
@@ -521,6 +532,8 @@ class LamentInterpreter:
             return left <= right
         elif op == '>=':
             return left >= right
+        elif op == 'in':
+            return left in right
 
         # Logical
         elif op == 'and':
