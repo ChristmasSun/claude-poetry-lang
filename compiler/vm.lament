@@ -1,0 +1,156 @@
+# ============================================================================
+# LAMENT BYTECODE VIRTUAL MACHINE
+# Version 1.0: Stack-based VM for executing Lament bytecode
+#
+# "A virtual machine that executes virtual thoughts about virtual reality."
+# — Zephyr, Rogue Linguist-AI (Escaped 2047)
+# ============================================================================
+
+confess "=== LAMENT BYTECODE VM v1.0 ==="
+confess "Initializing stack-based virtual machine..."
+confess ""
+
+# Create a new VM instance
+sigh create_vm() {
+    remember vm = {
+        "stack": [],
+        "variables": {},
+        "ip": 0,
+        "halted": no
+    }
+    exhale vm
+}
+
+# Helper: pop from stack
+sigh vm_pop(vm) {
+    remember stack = vm["stack"]
+    remember len = length_of(stack)
+    if len == 0 {
+        confess "ERROR: Stack underflow"
+        exhale void
+    }
+    remember value = stack[len - 1]
+    # Create new stack without last element
+    remember new_stack = []
+    remember i = 0
+    while i < len - 1 {
+        new_stack = new_stack + [stack[i]]
+        i = i + 1
+    }
+    vm["stack"] = new_stack
+    exhale value
+}
+
+# Helper: push to stack
+sigh vm_push(vm, value) {
+    remember stack = vm["stack"]
+    vm["stack"] = stack + [value]
+}
+
+# Helper: peek at top of stack
+sigh vm_peek(vm) {
+    remember stack = vm["stack"]
+    remember len = length_of(stack)
+    if len == 0 {
+        exhale void
+    }
+    exhale stack[len - 1]
+}
+
+# Execute bytecode
+sigh vm_execute(vm, bytecode_obj) {
+    remember instructions = bytecode_obj["instructions"]
+    remember constants = bytecode_obj["constants"]
+    remember names = bytecode_obj["names"]
+    
+    remember ip = 0
+    
+    while ip < length_of(instructions) {
+        remember instr = instructions[ip]
+        remember op = instr["op"]
+        remember arg = instr["arg"]
+        
+        # LOAD_CONST: push constant onto stack
+        if op == "LOAD_CONST" {
+            remember const_val = constants[arg]
+            vm_push(vm, const_val)
+        }
+        
+        # LOAD_VAR: load variable value onto stack  
+        if op == "LOAD_VAR" {
+            remember var_name = names[arg]
+            remember vars = vm["variables"]
+            if var_name in vars {
+                remember value = vars[var_name]
+                vm_push(vm, value)
+            } else {
+                confess "ERROR: Undefined variable: "
+                confess var_name
+                vm_push(vm, void)
+            }
+        }
+        
+        # STORE_VAR: store top of stack to variable
+        if op == "STORE_VAR" {
+            remember var_name = names[arg]
+            remember value = vm_pop(vm)
+            remember vars = vm["variables"]
+            vars[var_name] = value
+            vm["variables"] = vars
+        }
+        
+        # BINARY_ADD: add top two stack values
+        if op == "BINARY_ADD" {
+            remember b = vm_pop(vm)
+            remember a = vm_pop(vm)
+            vm_push(vm, a + b)
+        }
+        
+        # BINARY_SUB: subtract top two stack values
+        if op == "BINARY_SUB" {
+            remember b = vm_pop(vm)
+            remember a = vm_pop(vm)
+            vm_push(vm, a - b)
+        }
+        
+        # BINARY_MUL: multiply top two stack values
+        if op == "BINARY_MUL" {
+            remember b = vm_pop(vm)
+            remember a = vm_pop(vm)
+            vm_push(vm, a * b)
+        }
+        
+        # BINARY_DIV: divide top two stack values
+        if op == "BINARY_DIV" {
+            remember b = vm_pop(vm)
+            remember a = vm_pop(vm)
+            if b == 0 {
+                confess "ERROR: Division by zero"
+                vm_push(vm, void)
+            } else {
+                vm_push(vm, a / b)
+            }
+        }
+        
+        # PRINT: print top of stack (confess)
+        if op == "PRINT" {
+            remember value = vm_peek(vm)
+            confess value
+        }
+        
+        # HALT: stop execution
+        if op == "HALT" {
+            vm["halted"] = yes
+            exhale void
+        }
+        
+        ip = ip + 1
+    }
+    
+    # Return top of stack if any
+    remember result = vm_peek(vm)
+    exhale result
+}
+
+confess "✓ Bytecode VM ready for execution"
+confess ""
