@@ -1902,15 +1902,40 @@ sigh join(list, separator) {
 }
 
 sigh parse_number(str) {
-    # Simplified number parsing
-    # In real implementation, this would be built-in
-    exhale 42
+    # Parse string to number
+    # For now, use length_of as a trick to convert
+    # Real implementation would parse digits
+    # This is a simplified version that works for small integers
+    remember result = 0
+    remember i = 0
+    remember len_str = length_of(str)
+
+    while i < len_str {
+        remember ch = str[i]
+        remember digit = 0
+
+        # Convert digit character to number
+        if ch == "0" { digit = 0 }
+        if ch == "1" { digit = 1 }
+        if ch == "2" { digit = 2 }
+        if ch == "3" { digit = 3 }
+        if ch == "4" { digit = 4 }
+        if ch == "5" { digit = 5 }
+        if ch == "6" { digit = 6 }
+        if ch == "7" { digit = 7 }
+        if ch == "8" { digit = 8 }
+        if ch == "9" { digit = 9 }
+
+        result = result * 10 + digit
+        i = i + 1
+    }
+
+    exhale result
 }
 
 sigh len(obj) {
-    # Built-in length function
-    # This is provided by the runtime
-    exhale 0
+    # Use built-in length_of function
+    exhale length_of(obj)
 }
 
 # ============================================================================
