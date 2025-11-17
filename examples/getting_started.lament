@@ -1,0 +1,74 @@
+# Getting Started with Lament
+# Your first Lament program!
+
+# Variables - use "remember" to declare
+remember name = "World"
+remember age = 25
+remember pi = 3.14
+
+# Output - use "confess" to print
+confess "Hello, " + name + "!"
+confess "Age: "
+confess age
+
+# Functions - use "sigh" to define
+sigh greet(person) {
+    confess "Welcome, " + person + "!"
+    exhale "Greeted!"
+}
+
+remember result = greet("Alice")
+confess result
+
+# Math operations
+remember x = 10
+remember y = 20
+confess "Sum: "
+confess x + y
+confess "Product: "
+confess x * y
+
+# Lists
+remember numbers = [1, 2, 3, 4, 5]
+confess "Numbers: "
+confess numbers
+
+# Access list elements
+confess "First number: "
+confess numbers[0]
+
+# Dictionaries
+remember person = {"name": "Bob", "age": 30}
+confess "Person: "
+confess person
+confess "Name: "
+confess person["name"]
+
+# Conditionals
+remember score = 85
+
+if score >= 90 {
+    confess "Grade: A"
+} else {
+    if score >= 80 {
+        confess "Grade: B"
+    } else {
+        confess "Grade: C"
+    }
+}
+
+# Loops
+confess "Count to 5:"
+remember i = 1
+while i <= 5 {
+    confess i
+    i = i + 1
+}
+
+# For loops
+confess "Iterating list:"
+for num in numbers {
+    confess num
+}
+
+confess "Done! You know the basics now."
