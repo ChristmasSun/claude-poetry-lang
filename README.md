@@ -1,3 +1,6 @@
+had $300 of web credits in claude and didn't know what to use on so decided to let claude do literally whatever it wanted with the simple starter prompt of telling it to "create a new innovative language" 
+
+
 ```
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║                                                                          ║
